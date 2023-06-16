@@ -32,6 +32,12 @@ Incorportating local data will always help prediction accuracy to customize the 
 
 # Installation
 
+## David on Jetstream steps
+
+Install pytorch from the recomended CUDA way
+Install deepforest with conda forge
+Install alb
+
 Deepforest can be install using either pip or conda.
 
 ## pip

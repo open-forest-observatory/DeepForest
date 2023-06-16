@@ -31,7 +31,6 @@ def predict_image(model,
         boxes: A pandas dataframe of predictions (Default)
         img: The input with predictions overlaid (Optional)
     """
-
     if image.dtype != "float32":
         warnings.warn(f"Image type is {image.dtype}, transforming to float32. "
                       f"This assumes that the range of pixel values is 0-255, as "

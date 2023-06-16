@@ -393,6 +393,8 @@ class deepforest(pl.LightningModule):
                      raster_path=None,
                      image=None,
                      patch_size=400,
+                     resize_factor=1.0,
+                     brighten_factor=1.0,
                      patch_overlap=0.05,
                      iou_threshold=0.15,
                      return_plot=False,
@@ -430,7 +432,6 @@ class deepforest(pl.LightningModule):
         self.model.eval()
         self.model.score_thresh = self.config["score_thresh"]
         self.model.nms_thresh = self.config["nms_thresh"]
-
         if (raster_path is None) and (image is None):
             raise ValueError(
                 "Both tile and tile_path are None. Either supply a path to a tile on disk, or read one into memory!"
@@ -441,7 +442,15 @@ class deepforest(pl.LightningModule):
         else:
             self.image = rio.open(raster_path).read()
             self.image = np.moveaxis(self.image, 0, 2)
+            # Hack, ensure it's only three channels
+            self.image = self.image[..., :3]
+        if brighten_factor != 1.0:
+            self.image = (self.image * brighten_factor).astype(np.uint8)
 
+        if resize_factor != 1.0:
+            new_size = tuple(reversed((np.array(self.image.shape[:2]) * resize_factor).astype(int)))
+            self.image = cv2.resize(self.image, new_size)
+        
         ds = dataset.TileDataset(tile=self.image,
                                  patch_overlap=patch_overlap,
                                  patch_size=patch_size)
@@ -468,7 +477,7 @@ class deepforest(pl.LightningModule):
                 # Draw predictions on BGR
                 if raster_path:
                     tile = rio.open(raster_path).read()
-                drawn_plot = tile[:, :, ::-1]
+                tile = np.transpose(self.image, (2, 0, 1))
                 drawn_plot = visualize.plot_predictions(tile,
                                                         results,
                                                         color=color,

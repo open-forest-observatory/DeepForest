@@ -1,4 +1,4 @@
-name: DeepForest
+name: DeepForestLocal
 channels:
   - conda-forge
   - defaults

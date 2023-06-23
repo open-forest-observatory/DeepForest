@@ -23,7 +23,7 @@ xmin, ymin, xmax, ymax = transform_bounds(
     large_dataset.crs,
     *small_bounds
 )
-#xmin, ymin, xmax, ymax = large_dataset.transform * small_bounds_in_large_CRS 
+
 min_i, min_j = large_dataset.index(xmin, ymax)
 max_i, max_j = large_dataset.index(xmax, ymin)
 
@@ -37,4 +37,16 @@ fig, ax = plt.subplots(1,2)
 ax[0].imshow(large_img_crop[..., :3])
 ax[1].imshow(small_img)
 plt.show()
-breakpoint()
+
+
+model = deepforest_main.deepforest()
+model.use_release()
+predicted_raster = model.predict_tile(input_file,
+                                       return_plot = True,
+                                       patch_size=300,
+                                       patch_overlap=0.25,
+                                       resize_factor=resize_factor,
+                                       brighten_factor=brighten_factor)
+os.makedirs(output_folder, exist_ok=True)
+output_file = Path(output_folder, f"preds_resize_{resize_factor}_brighen_{brighten_factor}.png")
+imwrite(output_file, predicted_raster)

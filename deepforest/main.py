@@ -393,13 +393,14 @@ class deepforest(pl.LightningModule):
                      raster_path=None,
                      image=None,
                      patch_size=400,
-                     resize_factor=1.0,
+                     target_gsd=None,
                      brighten_factor=1.0,
                      patch_overlap=0.05,
                      iou_threshold=0.15,
                      return_plot=False,
                      mosaic=True,
                      use_soft_nms=False,
+                     geospatial_crop=None,
                      sigma=0.5,
                      thresh=0.001,
                      color=None,
@@ -413,6 +414,8 @@ class deepforest(pl.LightningModule):
             image (array): Numpy image array in BGR channel order
                 following openCV convention
             patch_size: patch size default400,
+            target_gsd: Resample to this gsd. If an image is passed or no geospatial information is provided, it is used
+                as a multiple on the current resolution. If None, the image is left as is 
             patch_overlap: patch overlap default 0.15,
             iou_threshold: Minimum iou overlap among predictions between
                 windows to be suppressed. Defaults to 0.5.
@@ -421,6 +424,7 @@ class deepforest(pl.LightningModule):
             mosaic: Return a single prediction dataframe (True) or a tuple of image crops and predictions (False)
             use_soft_nms: whether to perform Gaussian Soft NMS or not, if false, default perform NMS.
             sigma: variance of Gaussian function used in Gaussian Soft NMS
+            geospatial_crop: (lat low, lon low, lat high, lon high) bounding box in the same CRS
             thresh: the score thresh used to filter bboxes after soft-nms performed
             color: color of the bounding box as a tuple of BGR color, e.g. orange annotations is (0, 165, 255)
             thickness: thickness of the rectangle border line in px
@@ -439,16 +443,59 @@ class deepforest(pl.LightningModule):
 
         if raster_path is None:
             self.image = image
+            file_manager = None
         else:
-            self.image = rio.open(raster_path).read()
+            file_manager = rio.open(raster_path)
+            transform = file_manager.transform
+            crs = file_manager.crs
+            self.image = file_manager.read()
             self.image = np.moveaxis(self.image, 0, 2)
             # Hack, ensure it's only three channels
             self.image = self.image[..., :3]
+
+        if geospatial_crop is not None and file_manager is not None:
+            xmin, ymin, xmax, ymax = geospatial_crop
+
+            min_i, min_j = file_manager.index(xmin, ymax)
+            max_i, max_j = file_manager.index(xmax, ymin)
+
+            self.image = self.image[min_i:max_i, min_j:max_j, :3]
+
         if brighten_factor != 1.0:
             self.image = (self.image * brighten_factor).astype(np.uint8)
 
-        if resize_factor != 1.0:
-            new_size = tuple(reversed((np.array(self.image.shape[:2]) * resize_factor).astype(int)))
+        if target_gsd is not None:
+            
+            # TODO figure out ordering conventions in case of non-square pixels
+            if file_manager is not None:
+                bounds = file_manager.bounds
+                #transform, _, _ = rio.warp.calculate_default_transform(
+                #    src_crs=file_manager.crs,
+                #    dst_crs=rio.crs.CRS.from_string("EPSG:32610"),
+                #    width=file_manager.width,
+                #    height=file_manager.height,
+                #    left=bounds.left,
+                #    right=bounds.right,
+                #    top=bounds.top,
+                #    bottom=bounds.bottom,
+                #)
+                #breakpoint()
+                current_resolution = np.array(file_manager.res)
+            else:
+                current_resolution = np.array((1.0, 1.0)) # Default
+            resize_factor = current_resolution / target_gsd
+            current_size = self.image.shape[:2]
+            new_size = current_size * resize_factor
+
+            # Fix if it's in degrees
+            if new_size[0] < 1:
+                # TODO multiply one by cos lat
+                new_size[0] = new_size[0] * 111139
+                lon = np.deg2rad(file_manager.bounds.top)
+                cos_lon = np.cos(lon)
+                new_size[1] = new_size[1] * 111139 / cos_lon
+            new_size = new_size.astype(int)
+            new_size = tuple(reversed(new_size))
             self.image = cv2.resize(self.image, new_size)
         
         ds = dataset.TileDataset(tile=self.image,

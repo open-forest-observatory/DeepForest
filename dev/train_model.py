@@ -63,7 +63,6 @@ def resample_to_target_gsd(src_file, dst_file, target_gsd=0.1, shift=None):
             (original_width / output_width ),
             (original_height / output_height )
         )
-        breakpoint()
         profile.update({"height": output_height,
                         "width": output_width,
                        "transform": transform})
@@ -75,18 +74,18 @@ def resample_to_target_gsd(src_file, dst_file, target_gsd=0.1, shift=None):
 # https://gis.stackexchange.com/questions/367832/using-rasterio-to-crop-image-using-pixel-coordinates-instead-of-geographic-coord
 def crop_to_window(input_file, output_file,
                     min_x_geospatial, min_y_geospatial, max_x_geospatial, max_y_geospatial,
-                    padding_geospatial=1, offset_geospatial=None):
+                    padding_geospatial=1, offset_geospatial_xy=(0,0)):
     """
     Locations in the units of the CRS
     padding in the units of the CRS
     shift in the units of the CRS
     """
     with rio.open(input_file) as src:
-        min_x_geospatial = min_x_geospatial - padding_geospatial 
-        max_x_geospatial = max_x_geospatial + padding_geospatial 
+        min_x_geospatial = min_x_geospatial - padding_geospatial - offset_geospatial_xy[0] 
+        max_x_geospatial = max_x_geospatial + padding_geospatial - offset_geospatial_xy[0]
 
-        min_y_geospatial = min_y_geospatial - padding_geospatial 
-        max_y_geospatial = max_y_geospatial + padding_geospatial 
+        min_y_geospatial = min_y_geospatial - padding_geospatial + offset_geospatial_xy[1]
+        max_y_geospatial = max_y_geospatial + padding_geospatial + offset_geospatial_xy[1]
 
         # Note that y values are switched because of different convention
         min_i_pixels, min_j_pixels = src.index(min_x_geospatial, max_y_geospatial)
@@ -94,6 +93,10 @@ def crop_to_window(input_file, output_file,
         # Create a Window and calculate the transform from the source dataset    
         window = Window.from_slices((min_i_pixels, max_i_pixels), (min_j_pixels, max_j_pixels))
         transform = src.window_transform(window)
+
+        if offset_geospatial_xy is not None:
+            transform = transform * rio.Affine(1, 0, offset_geospatial_xy[0],
+                                                0, 1, offset_geospatial_xy[1])
 
         width = max_j_pixels - min_j_pixels
         height = max_i_pixels - min_i_pixels
@@ -130,8 +133,8 @@ def main(shapefile, image_file, workdir):
                     min_y_geospatial=min_y,
                     max_x_geospatial=max_x,
                     max_y_geospatial=max_y,
+                    offset_geospatial_xy = (-1,-3)
                     )
-    breakpoint()
 
     anns_in_cropped_img = shapefile_to_annotations(shapefile, cropped_file, savedir=workdir)
 

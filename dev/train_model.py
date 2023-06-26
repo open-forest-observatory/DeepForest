@@ -21,6 +21,7 @@ def parse_args():
     parser.add_argument("--shapefile", default="/ofo-share/repos-david/GaiaColabData/data/level_02/annotations/per_collect/stowe_anew/2022_07_14/collect_000/automated_000/trees.shp")
     parser.add_argument("--image-file", default="/ofo-share/repos-david/GaiaColabData/data/level_02/photogrametry/metashape/per_collect/stowe_anew/2023_06_15/collect_000/manual_000/exports/stow_anew_2023_06_15_collect_000_manual_000_ortho_mesh.tif")
     parser.add_argument("--workdir", default="data/temp_workdir/")
+    parser.add_argument("--n-epochs", default=10, type=int)
     args = parser.parse_args()
     return args
 

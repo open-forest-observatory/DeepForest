@@ -272,27 +272,29 @@ def shapefile_to_annotations(shapefile,
             for left, bottom, right, top in gdf.geometry.buffer(buffer_size).bounds.values
         ]
 
-    # get coordinates
-    df = gdf.geometry.bounds
 
     # raster bounds
     with rasterio.open(rgb) as src:
         left, bottom, right, top = src.bounds
-        resolution = src.res[0]
+        res_x, res_y = src.res
+    # Change into the same CRS
+    gdf = gdf.to_crs(src.crs.to_epsg())
+    # get coordinates
+    df = gdf.geometry.bounds
 
     # Transform project coordinates to image coordinates
-    df["tile_xmin"] = (df.minx - left) / resolution
+    df["tile_xmin"] = (df.minx - left) / res_x
     df["tile_xmin"] = df["tile_xmin"].astype(int)
 
-    df["tile_xmax"] = (df.maxx - left) / resolution
+    df["tile_xmax"] = (df.maxx - left) / res_x
     df["tile_xmax"] = df["tile_xmax"].astype(int)
 
     # UTM is given from the top, but origin of an image is top left
 
-    df["tile_ymax"] = (top - df.miny) / resolution
+    df["tile_ymax"] = (top - df.miny) / res_y
     df["tile_ymax"] = df["tile_ymax"].astype(int)
 
-    df["tile_ymin"] = (top - df.maxy) / resolution
+    df["tile_ymin"] = (top - df.maxy) / res_y
     df["tile_ymin"] = df["tile_ymin"].astype(int)
 
     # Add labels is they exist

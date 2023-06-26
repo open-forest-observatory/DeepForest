@@ -16,6 +16,7 @@ def parse_args():
     parser.add_argument("--target-gsds", type=float, nargs="+", default=(0.8, 0.4, 0.2, 0.1, 0.05, 0.025, 0.0125))
     parser.add_argument("--brighten-factors", type=float, nargs="+", default=[1.0])
     parser.add_argument("--crop-file", help="File to crop extent based on")
+    parser.add_argument("--model-path", help="Trained model")
     parser.add_argument("--output-folder", default="vis")
     args = parser.parse_args()
 
@@ -53,9 +54,13 @@ def get_matching_region(small_filepath, large_filepath, return_coords=True):
     large_img_crop = large_img[min_i:max_i, min_j:max_j, :3]
     return large_img_crop
 
-def main(input_file, target_gsd, brighten_factor, output_folder, crop_file=None):
-    model = deepforest_main.deepforest()
-    model.use_release()
+def main(input_file, target_gsd, brighten_factor, output_folder, crop_file=None, model_path=None):
+    if model_path is not None:
+        model = deepforest_main.deepforest.load_from_checkpoint(model_path)
+        model.model.score_thresh = 0.3
+    else:
+        model = deepforest_main.deepforest()
+        model.use_release()
     if crop_file is not None:
         geospatial_crop = get_matching_region(crop_file, input_file)
     else:
@@ -77,4 +82,4 @@ if __name__ == "__main__":
     args = parse_args() 
     for target_gsd in args.target_gsds:#args.resize_factors:
         for brighten_factor in args.brighten_factors: #args.brighten_factors:
-            main(args.input_file, target_gsd=target_gsd, brighten_factor=brighten_factor, output_folder=args.output_folder, crop_file=args.crop_file)
+            main(args.input_file, target_gsd=target_gsd, brighten_factor=brighten_factor, output_folder=args.output_folder, crop_file=args.crop_file, model_path=args.model_path)

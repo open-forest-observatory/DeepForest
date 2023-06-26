@@ -113,7 +113,7 @@ def crop_to_window(input_file, output_file,
             dst.write(src.read(window=window))
         resample_to_target_gsd(output_file, output_file )
 
-def main(shapefile, image_file, workdir):
+def main(shapefile, image_file, workdir, n_epochs=25):
     # Make the workdir if it doesn't exist
     os.makedirs(workdir, exist_ok=True)
 
@@ -151,7 +151,7 @@ def main(shapefile, image_file, workdir):
     model.use_release()
 
     model.config["save-snapshot"] = False
-    model.config["train"]["epochs"] = 5
+    model.config["train"]["epochs"] = n_epochs
     model.config["train"]["log_every_n_steps"] = 1 
     model.config["train"]["csv_file"] = annotations_file
     model.config["train"]["root_dir"] = os.path.dirname(annotations_file)

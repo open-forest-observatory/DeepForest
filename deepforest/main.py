@@ -4,6 +4,7 @@ import pandas as pd
 from PIL import Image
 import torch
 import typing
+import matplotlib.pyplot as plt
 
 import pytorch_lightning as pl
 from torch import optim
@@ -404,7 +405,8 @@ class deepforest(pl.LightningModule):
                      sigma=0.5,
                      thresh=0.001,
                      color=None,
-                     thickness=1):
+                     thickness=1,
+                     vis_plt=False):
         """For images too large to input into the model, predict_tile cuts the
         image into overlapping windows, predicts trees on each window and
         reassambles into a single array.
@@ -463,42 +465,36 @@ class deepforest(pl.LightningModule):
 
         if brighten_factor != 1.0:
             self.image = (self.image * brighten_factor).astype(np.uint8)
+        
+        tile = self.image.copy()
 
         if target_gsd is not None:
-            
-            # TODO figure out ordering conventions in case of non-square pixels
             if file_manager is not None:
-                bounds = file_manager.bounds
-                #transform, _, _ = rio.warp.calculate_default_transform(
-                #    src_crs=file_manager.crs,
-                #    dst_crs=rio.crs.CRS.from_string("EPSG:32610"),
-                #    width=file_manager.width,
-                #    height=file_manager.height,
-                #    left=bounds.left,
-                #    right=bounds.right,
-                #    top=bounds.top,
-                #    bottom=bounds.bottom,
-                #)
-                #breakpoint()
-                current_resolution = np.array(file_manager.res)
+                # Extract the i, j resolution
+                current_resolution = np.array(list(reversed(file_manager.res)))
+                # If the current resolution is in degrees, convert it to meters
+                if current_resolution[0] < 1e-4:
+                    current_resolution = current_resolution * 111139
+                    # TODO figure out when this correction is needed
+                    if False:
+                        lon = np.deg2rad(file_manager.bounds.top)
+                        cos_lon = np.cos(lon)
+                        current_resolution[1] = current_resolution[1] / cos_lon
             else:
                 current_resolution = np.array((1.0, 1.0)) # Default
-            resize_factor = current_resolution / target_gsd
-            current_size = self.image.shape[:2]
-            new_size = current_size * resize_factor
 
-            # Fix if it's in degrees
-            if new_size[0] < 1:
-                # TODO multiply one by cos lat
-                new_size[0] = new_size[0] * 111139
-                lon = np.deg2rad(file_manager.bounds.top)
-                cos_lon = np.cos(lon)
-                new_size[1] = new_size[1] * 111139 / cos_lon
-            new_size = new_size.astype(int)
-            new_size = tuple(reversed(new_size))
-            self.image = cv2.resize(self.image, new_size)
+            resize_factor = current_resolution / target_gsd
+            new_size = (self.image.shape[:2] * resize_factor).astype(int)
+
+            # The size is specified as width, height
+            tile = cv2.resize(self.image, (new_size[1], new_size[0]))
+            if vis_plt:
+                crop = tile[int(tile.shape[0]/2):int(tile.shape[0]/2)+patch_size,
+                            int(tile.shape[1]/2):int(tile.shape[1]/2)+patch_size]
+                plt.imshow(crop)
+                plt.show()
         
-        ds = dataset.TileDataset(tile=self.image,
+        ds = dataset.TileDataset(tile=tile,
                                  patch_overlap=patch_overlap,
                                  patch_size=patch_size)
         batched_results = self.trainer.predict(self, self.predict_dataloader(ds))
@@ -516,20 +512,31 @@ class deepforest(pl.LightningModule):
                                      sigma=sigma,
                                      thresh=thresh,
                                      iou_threshold=iou_threshold)
+
             results["label"] = results.label.apply(
                 lambda x: self.numeric_to_label_dict[x])
+
             if raster_path:
                 results["image_path"] = os.path.basename(raster_path)
             if return_plot:
+                # Reproject to the original resolution so geospatial alignment is correct
+                if target_gsd is not None:
+                    results["xmin"] = results["xmin"] * self.image.shape[1] / tile.shape[1] 
+                    results["xmax"] = results["xmax"] * self.image.shape[1] / tile.shape[1] 
+                    results["ymin"] = results["ymin"] * self.image.shape[0] / tile.shape[0] 
+                    results["ymax"] = results["ymax"] * self.image.shape[0] / tile.shape[0] 
+
                 # Draw predictions on BGR
-                if raster_path:
-                    tile = rio.open(raster_path).read()
-                tile = np.transpose(self.image, (2, 0, 1))
-                drawn_plot = visualize.plot_predictions(tile,
+                drawn_plot = visualize.plot_predictions(self.image,
                                                         results,
                                                         color=color,
                                                         thickness=thickness)
-                return drawn_plot
+                if vis_plt:
+                    crop = drawn_plot[int(drawn_plot.shape[0]/2):int(drawn_plot.shape[0]/2)+patch_size*4,
+                                      int(drawn_plot.shape[1]/2):int(drawn_plot.shape[1]/2)+patch_size*4]
+                    plt.imshow(crop)
+                    plt.show()
+                return drawn_plot, results
         else:
             for df in results:
                 df["label"] = df.label.apply(lambda x: self.numeric_to_label_dict[x])

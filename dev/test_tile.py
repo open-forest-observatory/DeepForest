@@ -1,4 +1,5 @@
 from deepforest import main as deepforest_main
+from deepforest.utilities import boxes_to_shapefile
 from deepforest import get_data
 import os
 import matplotlib.pyplot as plt
@@ -12,7 +13,7 @@ from rasterio.warp import transform_bounds
 
 def parse_args():
     parser = ArgumentParser()
-    parser.add_argument("--input-file", required=True)
+    parser.add_argument("--input-files", required=True, nargs="+")
     parser.add_argument("--target-gsds", type=float, nargs="+", default=(0.8, 0.4, 0.2, 0.1, 0.05, 0.025, 0.0125))
     parser.add_argument("--brighten-factors", type=float, nargs="+", default=[1.0])
     parser.add_argument("--crop-file", help="File to crop extent based on")
@@ -26,6 +27,7 @@ def get_matching_region(small_filepath, large_filepath, return_coords=True):
     """
     Load crop of large dataset matching small one
     """
+    # TODO update with window cropping
     small_dataset = rio.open(small_filepath)
     large_dataset = rio.open(large_filepath)
 
@@ -54,7 +56,8 @@ def get_matching_region(small_filepath, large_filepath, return_coords=True):
     large_img_crop = large_img[min_i:max_i, min_j:max_j, :3]
     return large_img_crop
 
-def main(input_file, target_gsd, brighten_factor, output_folder, crop_file=None, model_path=None):
+def main(input_file, target_gsd, brighten_factor, output_folder, crop_file=None, model_path=None,
+         return_plot=True):
     if model_path is not None:
         model = deepforest_main.deepforest.load_from_checkpoint(model_path)
         model.model.score_thresh = 0.3
@@ -66,20 +69,31 @@ def main(input_file, target_gsd, brighten_factor, output_folder, crop_file=None,
     else:
         geospatial_crop = None
 
-    predicted_raster = model.predict_tile(input_file,
-                                          return_plot = True,
-                                          patch_size=300,
+    prediction = model.predict_tile(input_file,
+                                          return_plot = return_plot,
+                                          patch_size=400,
                                           patch_overlap=0.25,
                                           target_gsd=target_gsd,
                                           geospatial_crop=geospatial_crop,
                                           brighten_factor=brighten_factor)
+    
 
+        
     os.makedirs(output_folder, exist_ok=True)
-    output_file = Path(output_folder, f"preds_gsd_{target_gsd}_brighen_{brighten_factor}.png")
-    imwrite(output_file, predicted_raster)
+    input_file_name = Path(input_file).stem
+
+    if return_plot:
+        output_file = Path(output_folder, f"{input_file_name}_preds_gsd_{target_gsd}_brighen_{brighten_factor}.png")
+        #imwrite(output_file, prediction[0])
+        prediction = prediction[1]
+
+    shapefile = boxes_to_shapefile(prediction, str(Path(input_file).parent), flip_y_axis=True)
+    output_file = Path(output_folder, f"{input_file_name}_preds_gsd_{target_gsd}_brighen_{brighten_factor}.geojson")
+    shapefile.to_file(output_file)
 
 if __name__ == "__main__":
     args = parse_args() 
     for target_gsd in args.target_gsds:#args.resize_factors:
         for brighten_factor in args.brighten_factors: #args.brighten_factors:
-            main(args.input_file, target_gsd=target_gsd, brighten_factor=brighten_factor, output_folder=args.output_folder, crop_file=args.crop_file, model_path=args.model_path)
+            for file in args.input_files:
+                main(file, target_gsd=target_gsd, brighten_factor=brighten_factor, output_folder=args.output_folder, crop_file=args.crop_file, model_path=args.model_path)

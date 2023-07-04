@@ -9,6 +9,7 @@ import geopandas as gpd
 import numpy as np
 import pandas as pd
 import rasterio
+from rasterio.windows import Window
 import shapely
 import xmltodict
 import yaml
@@ -523,3 +524,87 @@ def project_boxes(df, root_dir, transform=True):
     df.crs = crs
 
     return df
+
+def resample_to_target_gsd(src_file, dst_file, target_gsd=0.1):
+    with rasterio.open(src_file) as dataset:
+        profile = dataset.profile.copy()
+
+        current_resolution = np.array(dataset.res)
+
+        original_width = dataset.width
+        original_height = dataset.height
+
+        if current_resolution[0] < 1e-5:
+            current_resolution[0] = current_resolution[0] * 111139
+            lon = np.deg2rad(dataset.bounds.top)
+            cos_lon = np.cos(lon)
+            current_resolution[1] = current_resolution[1] * 111139 / cos_lon
+
+        resize_factor = current_resolution / target_gsd
+        scale_factor_x, scale_factor_y = resize_factor
+
+        # resample data to target shape
+        data = dataset.read(
+            out_shape=(
+                dataset.count,
+                int(np.ceil(original_height * scale_factor_y)),
+                int(np.ceil(original_width * scale_factor_x))
+            ),
+            resampling=rasterio.enums.Resampling.bilinear
+        )
+        #data = data[:3]
+        _, output_height, output_width = data.shape
+        # scale image transform
+        transform = dataset.transform * dataset.transform.scale(
+            (original_width / output_width ),
+            (original_height / output_height )
+        )
+        profile.update({"height": output_height,
+                        "width": output_width,
+                       "transform": transform})
+
+    with rasterio.open(dst_file, "w", **profile) as dataset:
+        dataset.write(data)
+
+# Taken from
+# https://gis.stackexchange.com/questions/367832/using-rasterio-to-crop-image-using-pixel-coordinates-instead-of-geographic-coord
+def crop_to_window(input_file, output_file,
+                    min_x_geospatial, min_y_geospatial, max_x_geospatial, max_y_geospatial,
+                    padding_geospatial=1e-5, offset_geospatial_xy=(0,0)):
+    """
+    Locations in the units of the CRS
+    padding in the units of the CRS
+    shift in the units of the CRS
+    """
+    with rasterio.open(input_file) as src:
+        min_x_geospatial = min_x_geospatial - padding_geospatial - offset_geospatial_xy[0] 
+        max_x_geospatial = max_x_geospatial + padding_geospatial - offset_geospatial_xy[0]
+
+        min_y_geospatial = min_y_geospatial - padding_geospatial + offset_geospatial_xy[1]
+        max_y_geospatial = max_y_geospatial + padding_geospatial + offset_geospatial_xy[1]
+
+        # Note that y values are switched because of different convention
+        min_i_pixels, min_j_pixels = src.index(min_x_geospatial, max_y_geospatial)
+        max_i_pixels, max_j_pixels = src.index(max_x_geospatial, min_y_geospatial)     
+        # Create a Window and calculate the transform from the source dataset    
+        window = Window.from_slices((min_i_pixels, max_i_pixels), (min_j_pixels, max_j_pixels))
+        transform = src.window_transform(window)
+
+        if offset_geospatial_xy is not None:
+            transform = transform * rasterio.Affine(1, 0, offset_geospatial_xy[0],
+                                                0, 1, offset_geospatial_xy[1])
+
+        width = max_j_pixels - min_j_pixels
+        height = max_i_pixels - min_i_pixels
+
+        # Create a new cropped raster to write to
+        profile = src.profile
+        profile.update({
+            'height': height,
+            'width': width,
+            'transform': transform})
+
+        with rasterio.open(output_file, 'w', **profile) as dst:
+            # Read the data from the window and write it to the output raster
+            dst.write(src.read(window=window))
+        resample_to_target_gsd(output_file, output_file)

@@ -570,18 +570,18 @@ def resample_to_target_gsd(src_file, dst_file, target_gsd=0.1):
 # https://gis.stackexchange.com/questions/367832/using-rasterio-to-crop-image-using-pixel-coordinates-instead-of-geographic-coord
 def crop_to_window(input_file, output_file,
                     min_x_geospatial, min_y_geospatial, max_x_geospatial, max_y_geospatial,
-                    padding_geospatial=1e-5, offset_geospatial_xy=(0,0)):
+                    padding_pixels=10, offset_geospatial_xy=(0,0)):
     """
     Locations in the units of the CRS
     padding in the units of the CRS
     shift in the units of the CRS
     """
     with rasterio.open(input_file) as src:
-        min_x_geospatial = min_x_geospatial - padding_geospatial - offset_geospatial_xy[0] 
-        max_x_geospatial = max_x_geospatial + padding_geospatial - offset_geospatial_xy[0]
+        min_x_geospatial = min_x_geospatial - padding_pixels * src.res[0] - offset_geospatial_xy[0] 
+        max_x_geospatial = max_x_geospatial + padding_pixels * src.res[0] - offset_geospatial_xy[0]
 
-        min_y_geospatial = min_y_geospatial - padding_geospatial + offset_geospatial_xy[1]
-        max_y_geospatial = max_y_geospatial + padding_geospatial + offset_geospatial_xy[1]
+        min_y_geospatial = min_y_geospatial - padding_pixels * src.res[1] + offset_geospatial_xy[1]
+        max_y_geospatial = max_y_geospatial + padding_pixels * src.res[1] + offset_geospatial_xy[1]
 
         # Note that y values are switched because of different convention
         min_i_pixels, min_j_pixels = src.index(min_x_geospatial, max_y_geospatial)

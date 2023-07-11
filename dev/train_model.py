@@ -1,9 +1,10 @@
 import argparse
-from deepforest.utilities import shapefile_to_annotations, crop_to_window
+from deepforest.utilities import shapefile_to_annotations, crop_to_window, resample_to_target_gsd
 import geopandas as gpd
 from pathlib import Path
 import os
 from deepforest import main as deepforest_main
+from deepforest.preprocess import split_raster
 import shutil
 import numpy as np
 from deepforest.callbacks import images_callback
@@ -48,9 +49,9 @@ def main(shapefile, image_file, workdir, model_savefile, n_epochs=25):
                     min_y_geospatial=min_y,
                     max_x_geospatial=max_x,
                     max_y_geospatial=max_y,
-                    padding_geospatial=1,
                     offset_geospatial_xy = (0,0)
                     )
+    resample_to_target_gsd(cropped_file, cropped_file, target_gsd=0.1)
 
     anns_in_cropped_img = shapefile_to_annotations(shapefile, cropped_file, savedir=workdir)
 
@@ -62,6 +63,14 @@ def main(shapefile, image_file, workdir, model_savefile, n_epochs=25):
     print(f"cropped_min_x: {cropped_min_x}, cropped_min_y: {cropped_min_y}, cropped_max_x: {cropped_max_x}, cropped_max_y: {cropped_max_y}")
     annotations_file = Path(workdir, "annotations.csv") 
     anns_in_cropped_img.to_csv(annotations_file)
+
+    shutil.rmtree(Path(workdir, "crops"))
+    os.makedirs(Path(workdir, "crops"), exist_ok=True)
+    split_raster(annotations_file=annotations_file,
+                 path_to_raster=cropped_file,
+                 base_dir=Path(workdir, "crops"))
+    
+    annotations_file = list(Path(workdir, "crops").glob("*csv"))[0]
 
     model = deepforest_main.deepforest()
     model.use_release()

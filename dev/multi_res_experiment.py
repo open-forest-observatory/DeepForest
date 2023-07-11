@@ -115,7 +115,7 @@ def main(
             ortho_crops_folder,
             RS_crops_folder,
             ortho_preds_base_crops_folder,
-            ortho_preds_finetuned_folder,
+            ortho_preds_finetuned_crops_folder,
         )
     ]
 
@@ -208,30 +208,41 @@ def main(
     # Generated training chips from the drone data predictions
     cropped_ortho_preds_base_annotations_file = create_crops(
         input_annotations_shapefile=ortho_base_preds_file,
-        input_image_file=resampled_ortho,
+        input_image_file=resampled_RS,
         workdir=workdir,
         annotations_csv=Path(anns_folder, "ortho_preds_base_anns.csv"),
         crop_folder=ortho_preds_base_crops_folder,
     )
     cropped_ortho_preds_finetuned_annotations_file = create_crops(
         input_annotations_shapefile=ortho_finetuned_preds_file,
-        input_image_file=resampled_ortho,
+        input_image_file=resampled_RS,
         workdir=workdir,
         annotations_csv=Path(anns_folder, "ortho_preds_finetuned_anns.csv"),
         crop_folder=ortho_preds_finetuned_crops_folder,
     )
     # Train new model
-    finetuned_model_ortho_preds_base_file = Path(models_folder, "ortho_preds_base_retrained.pth")
-    finetuned_model_ortho_preds_finetuned_file = Path(models_folder, "ortho_preds_finetuned_retrained.pth")
+    finetuned_model_ortho_preds_base_file = Path(models_folder, "ortho_preds_base_retrained_RS.pth")
+    finetuned_model_ortho_preds_finetuned_file = Path(models_folder, "ortho_preds_finetuned_retrained_RS.pth")
     train_model(
         annotations_file=cropped_ortho_preds_base_annotations_file,
         n_epochs=200,
         model_savefile=finetuned_model_ortho_preds_base_file,
     )
     train_model(
-        annotations_file=cropped_RS_annotations_file,
+        annotations_file=cropped_ortho_preds_finetuned_annotations_file,
         n_epochs=200,
         model_savefile=finetuned_model_RS_file,
+    )
+    # Predict
+    predict_and_write(
+        model=create_reload_model(finetuned_model_ortho_preds_base_file),
+        input_file=resampled_RS,
+        output_file=Path(preds_folder, "RS_finetuned_preds_from_ortho_base_preds.geojson"),
+    )
+    predict_and_write(
+        model=create_reload_model(finetuned_model_ortho_preds_finetuned_file),
+        input_file=resampled_RS,
+        output_file=Path(preds_folder, "RS_finetuned_preds_from_ortho_finetuned_preds.geojson"),
     )
 
 

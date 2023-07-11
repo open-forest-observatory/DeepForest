@@ -9,10 +9,37 @@ from deepforest.utilities import shapefile_to_annotations
 from deepforest import main as deepforest_main
 from deepforest.utilities import boxes_to_shapefile
 
+
 def create_base_model():
     model = deepforest_main.deepforest()
     model.use_release()
     return model
+
+
+def create_reload_model(model_path):
+    model = deepforest_main.deepforest.load_from_checkpoint(model_path)
+    model.model.score_thresh = 0.3
+    return model
+
+
+def create_crops(
+    input_annotations_shapefile,
+    input_image_file,
+    workdir,
+    annotations_csv,
+    crop_folder,
+):
+    ortho_annotations = shapefile_to_annotations(
+        input_annotations_shapefile, input_image_file, savedir=workdir
+    )
+    ortho_annotations.to_csv(annotations_csv)
+    cropped_annotations_csv = split_raster(
+        annotations_file=annotations_csv,
+        path_to_raster=input_image_file,
+        base_dir=crop_folder,
+    )[1]
+    return cropped_annotations_csv
+
 
 def predict_and_write(model, input_file, output_file):
     # Predict in aligned images
@@ -24,18 +51,20 @@ def predict_and_write(model, input_file, output_file):
     )
     shapefile.to_file(output_file)
 
+
 def train_model(annotations_file, n_epochs, model_savefile):
     model = create_base_model()
 
     model.config["save-snapshot"] = False
     model.config["train"]["epochs"] = n_epochs
-    model.config["train"]["log_every_n_steps"] = 1 
+    model.config["train"]["log_every_n_steps"] = 1
     model.config["train"]["csv_file"] = annotations_file
     model.config["train"]["root_dir"] = os.path.dirname(annotations_file)
 
     model.create_trainer()
     model.trainer.fit(model)
     model.save_model(model_savefile)
+
 
 def parse_args():
     parser = argparse.ArgumentParser()
@@ -73,8 +102,22 @@ def main(
     anns_folder = Path(workdir, "anns")
     ortho_crops_folder = Path(workdir, "crops", "ortho")
     RS_crops_folder = Path(workdir, "crops", "RS")
+    ortho_preds_base_crops_folder = Path(workdir, "crops", "ortho_preds_base")
+    ortho_preds_finetuned_crops_folder = Path(workdir, "crops", "ortho_preds_finetuned")
     # Create sub directoies
-    [os.makedirs(folder, exist_ok=True) for folder in (inputs_folder, preds_folder, models_folder, anns_folder,ortho_crops_folder, RS_crops_folder)]
+    [
+        os.makedirs(folder, exist_ok=True)
+        for folder in (
+            inputs_folder,
+            preds_folder,
+            models_folder,
+            anns_folder,
+            ortho_crops_folder,
+            RS_crops_folder,
+            ortho_preds_base_crops_folder,
+            ortho_preds_finetuned_folder,
+        )
+    ]
 
     # Resampled files and copy annotation
     resampled_RS = Path(inputs_folder, Path(remote_sensing_file).name)
@@ -104,31 +147,93 @@ def main(
     base_model = create_base_model()
 
     # Generate predictions with the base model
-    predict_and_write(model=base_model, input_file=resampled_ortho, output_file=Path(preds_folder, "ortho_base_preds.geojson"))
-    predict_and_write(model=base_model, input_file=resampled_RS,    output_file=Path(preds_folder, "RS_base_preds.geojson"))
-
+    ortho_base_preds_file = Path(preds_folder, "ortho_base_preds.geojson")
+    predict_and_write(
+        model=base_model,
+        input_file=resampled_ortho,
+        output_file=ortho_base_preds_file,
+    )
+    predict_and_write(
+        model=base_model,
+        input_file=resampled_RS,
+        output_file=Path(preds_folder, "RS_base_preds.geojson"),
+    )
 
     # Generated training chips
-    ortho_annotations = shapefile_to_annotations(training_annotations, resampled_ortho, savedir=workdir)
-    ortho_annotations_file = Path(anns_folder, "ortho_anns.csv")
-    ortho_annotations.to_csv(ortho_annotations_file)
-    cropped_ortho_annotations = split_raster(
-        annotations_file=ortho_annotations_file,
-        path_to_raster=resampled_ortho,
-        base_dir=ortho_crops_folder,
-    )[1]
+    cropped_ortho_annotations_file = create_crops(
+        input_annotations_shapefile=training_annotations,
+        input_image_file=resampled_ortho,
+        workdir=workdir,
+        annotations_csv=Path(anns_folder, "ortho_anns.csv"),
+        crop_folder=ortho_crops_folder,
+    )
 
-    RS_annotations = shapefile_to_annotations(training_annotations, resampled_RS, savedir=workdir)
-    RS_annotations_file =Path(anns_folder, "RS_anns.csv")
-    RS_annotations.to_csv(RS_annotations_file)
-    cropped_RS_annotations = split_raster(
-        annotations_file=RS_annotations_file,
-        path_to_raster=resampled_RS,
-        base_dir=RS_crops_folder,
-    )[1]
+    cropped_RS_annotations_file = create_crops(
+        input_annotations_shapefile=training_annotations,
+        input_image_file=resampled_RS,
+        workdir=workdir,
+        annotations_csv=Path(anns_folder, "RS_anns.csv"),
+        crop_folder=RS_crops_folder,
+    )
 
     # Finetune new models
-    #train_model()
+    finetuned_model_ortho_file = Path(models_folder, "ortho_retrained.pth")
+    finetuned_model_RS_file = Path(models_folder, "RS_retrained.pth")
+
+    train_model(
+        annotations_file=cropped_ortho_annotations_file,
+        n_epochs=200,
+        model_savefile=finetuned_model_ortho_file,
+    )
+    train_model(
+        annotations_file=cropped_RS_annotations_file,
+        n_epochs=200,
+        model_savefile=finetuned_model_RS_file,
+    )
+
+    # Generate predictions
+    ortho_finetuned_preds_file = Path(preds_folder, "ortho_finetuned_preds.geojson")
+
+    predict_and_write(
+        model=create_reload_model(finetuned_model_ortho_file),
+        input_file=resampled_ortho,
+        output_file=ortho_finetuned_preds_file,
+    )
+    predict_and_write(
+        model=create_reload_model(finetuned_model_RS_file),
+        input_file=resampled_RS,
+        output_file=Path(preds_folder, "RS_finetuned_preds.geojson"),
+    )
+
+    # Generated training chips from the drone data predictions
+    cropped_ortho_preds_base_annotations_file = create_crops(
+        input_annotations_shapefile=ortho_base_preds_file,
+        input_image_file=resampled_ortho,
+        workdir=workdir,
+        annotations_csv=Path(anns_folder, "ortho_preds_base_anns.csv"),
+        crop_folder=ortho_preds_base_crops_folder,
+    )
+    cropped_ortho_preds_finetuned_annotations_file = create_crops(
+        input_annotations_shapefile=ortho_finetuned_preds_file,
+        input_image_file=resampled_ortho,
+        workdir=workdir,
+        annotations_csv=Path(anns_folder, "ortho_preds_finetuned_anns.csv"),
+        crop_folder=ortho_preds_finetuned_crops_folder,
+    )
+    # Train new model
+    finetuned_model_ortho_preds_base_file = Path(models_folder, "ortho_preds_base_retrained.pth")
+    finetuned_model_ortho_preds_finetuned_file = Path(models_folder, "ortho_preds_finetuned_retrained.pth")
+    train_model(
+        annotations_file=cropped_ortho_preds_base_annotations_file,
+        n_epochs=200,
+        model_savefile=finetuned_model_ortho_preds_base_file,
+    )
+    train_model(
+        annotations_file=cropped_RS_annotations_file,
+        n_epochs=200,
+        model_savefile=finetuned_model_RS_file,
+    )
+
 
 if __name__ == "__main__":
     args = parse_args()

@@ -267,4 +267,4 @@ def split_raster(annotations_file,
     file_path = os.path.join(base_dir, file_path)
     annotations_files.to_csv(file_path, index=False, header=True)
 
-    return annotations_files
+    return annotations_files, file_path

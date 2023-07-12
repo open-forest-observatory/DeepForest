@@ -282,7 +282,8 @@ def shapefile_to_annotations(shapefile,
     gdf = gdf.to_crs(src.crs.to_epsg())
     # get coordinates
     df = gdf.geometry.bounds
-
+    # Remove rows with nans
+    df = df.dropna()
     # Transform project coordinates to image coordinates
     df["tile_xmin"] = (df.minx - left) / res_x
     df["tile_xmin"] = df["tile_xmin"].astype(int)
@@ -570,7 +571,7 @@ def resample_to_target_gsd(src_file, dst_file, target_gsd=0.1):
 # https://gis.stackexchange.com/questions/367832/using-rasterio-to-crop-image-using-pixel-coordinates-instead-of-geographic-coord
 def crop_to_window(input_file, output_file,
                     min_x_geospatial, min_y_geospatial, max_x_geospatial, max_y_geospatial,
-                    padding_geospatial=1, offset_geospatial_xy=(0,0)):
+                    padding_geospatial=0, offset_geospatial_xy=(0,0)):
     """
     Locations in the units of the CRS
     padding in the units of the CRS

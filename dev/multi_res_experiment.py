@@ -174,6 +174,10 @@ def main(
     ## Resampled files and copy annotation
     resampled_RS_file = Path(inputs_folder, Path(remote_sensing_file).name)
     resampled_ortho_file = Path(inputs_folder, Path(ortho_file).name)
+
+    # TODO update them to not include the test set
+    drone_RS_file = resampled_RS_file
+    drone_ortho_file = resampled_ortho_file
     shutil.copyfile(
         training_annotations, Path(inputs_folder, Path(training_annotations).name)
     )
@@ -294,26 +298,26 @@ def main(
 
     predict_and_write(
         model=create_base_model(),
-        input_file=resampled_ortho_file,
+        input_file=drone_ortho_file,
         output_file=ortho_base_preds_whole_region_file,
     )
     predict_and_write(
         model=create_reload_model(finetuned_model_ortho_file),
-        input_file=resampled_ortho_file,
+        input_file=drone_ortho_file,
         output_file=ortho_finetuned_preds_whole_region_file,
     )
 
     # Generated training chips from the drone data predictions
     cropped_ortho_preds_base_annotations_file = create_crops(
         input_annotations_shapefile=ortho_base_preds_whole_region_file,
-        input_image_file=resampled_ortho_file,
+        input_image_file=drone_ortho_file,
         workdir=workdir,
         annotations_csv=Path(anns_folder, "ortho_preds_base_anns.csv"),
         crop_folder=ortho_preds_base_crops_folder,
     )
     cropped_ortho_preds_finetuned_annotations_file = create_crops(
         input_annotations_shapefile=ortho_finetuned_preds_whole_region_file,
-        input_image_file=resampled_RS_file,
+        input_image_file=drone_ortho_file,
         workdir=workdir,
         annotations_csv=Path(anns_folder, "ortho_preds_finetuned_anns.csv"),
         crop_folder=ortho_preds_finetuned_crops_folder,
@@ -340,7 +344,7 @@ def main(
     # Predict
     fineteuned_RS_on_ortho_base_eval_dict = predict_and_eval(
         model=create_reload_model(finetuned_model_ortho_preds_base_file),
-        input_image_file=resampled_RS_file,
+        input_image_file=drone_RS_file,
         output_preds_file=Path(
             preds_folder, "RS_finetuned_preds_from_ortho_base_preds.geojson"
         ),
@@ -348,7 +352,7 @@ def main(
     )
     fineteuned_RS_on_ortho_finetuned_eval_dict = predict_and_write(
         model=create_reload_model(finetuned_model_ortho_preds_finetuned_file),
-        input_image_file=resampled_RS_file,
+        input_image_file=drone_RS_file,
         output_preds_file=Path(
             preds_folder, "RS_finetuned_preds_from_ortho_finetuned_preds.geojson"
         ),

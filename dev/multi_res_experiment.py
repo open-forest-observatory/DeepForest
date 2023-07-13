@@ -344,29 +344,29 @@ def main(
     # Predict
     fineteuned_RS_on_ortho_base_eval_dict = predict_and_eval(
         model=create_reload_model(finetuned_model_ortho_preds_base_file),
-        input_image_file=drone_RS_file,
+        input_image_file=test_RS_file,
         output_preds_file=Path(
             preds_folder, "RS_finetuned_preds_from_ortho_base_preds.geojson"
         ),
         gt_file=training_annotations,
     )
-    fineteuned_RS_on_ortho_finetuned_eval_dict = predict_and_write(
+    fineteuned_RS_on_ortho_finetuned_eval_dict = predict_and_eval(
         model=create_reload_model(finetuned_model_ortho_preds_finetuned_file),
-        input_image_file=drone_RS_file,
+        input_image_file=test_RS_file,
         output_preds_file=Path(
             preds_folder, "RS_finetuned_preds_from_ortho_finetuned_preds.geojson"
         ),
         gt_file=training_annotations,
     )
-
+    breakpoint()
     print(
         " name & recall & precision & IoU \n"
-        + f" base ortho & {base_ortho_eval_dict['recall']} & {base_ortho_eval_dict['precision']} & {base_ortho_eval_dict['IoU']} \n"
-        + f" finetuned ortho & {finetune_ortho_eval_dict['recall']} & {finetune_ortho_eval_dict['precision']} & {finetune_ortho_eval_dict['IoU']} \n"
-        + f" base RS & {base_RS_eval_dict['recall']} & {base_RS_eval_dict['precision']} & {base_RS_eval_dict['IoU']} \n"
-        + f" finetune RS & {finetune_RS_eval_dict['recall']} & {finetune_RS_eval_dict['precision']} & {finetune_RS_eval_dict['IoU']} \n"
-        + f" finetune RS on ortho base & {fineteuned_RS_on_ortho_base_eval_dict['recall']} & {fineteuned_RS_on_ortho_base_eval_dict['precision']} & {fineteuned_RS_on_ortho_base_eval_dict['IoU']} \n"
-        + f" finetune RS on ortho finetuned & {fineteuned_RS_on_ortho_finetuned_eval_dict['recall']} & {fineteuned_RS_on_ortho_finetuned_eval_dict['precision']} & {fineteuned_RS_on_ortho_finetuned_eval_dict['IoU']} \n"
+        + f" base ortho & {base_ortho_eval_dict['box_recall']:.3f} & {base_ortho_eval_dict['box_precision']:.3f} & {base_ortho_eval_dict['box_IoU']:.3f}\\\\ \\hline \n"
+        + f" finetuned ortho & {finetune_ortho_eval_dict['box_recall']:.3f} & {finetune_ortho_eval_dict['box_precision']:.3f} & {finetune_ortho_eval_dict['box_IoU']:.3f}\\\\ \\hline \n"
+        + f" base RS & {base_RS_eval_dict['box_recall']:.3f} & {base_RS_eval_dict['box_precision']:.3f} & {base_RS_eval_dict['box_IoU']:.3f}\\\\ \\hline \n"
+        + f" finetune RS & {finetune_RS_eval_dict['box_recall']:.3f} & {finetune_RS_eval_dict['box_precision']:.3f} & {finetune_RS_eval_dict['box_IoU']:.3f}\\\\ \\hline \n"
+        + f" finetune RS on ortho base & {fineteuned_RS_on_ortho_base_eval_dict['box_recall']:.3f} & {fineteuned_RS_on_ortho_base_eval_dict['box_precision']:.3f} & {fineteuned_RS_on_ortho_base_eval_dict['box_IoU']:.3f}\\\\ \\hline \n"
+        + f" finetune RS on ortho finetuned & {fineteuned_RS_on_ortho_finetuned_eval_dict['box_recall']:.3f} & {fineteuned_RS_on_ortho_finetuned_eval_dict['box_precision']:.3f} & {fineteuned_RS_on_ortho_finetuned_eval_dict['box_IoU']:.3f}\\\\ \\hline \n"
     )
     breakpoint()
 

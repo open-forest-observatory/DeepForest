@@ -28,24 +28,29 @@ def evaluate_image(predictions, ground_df, root_dir, savedir=None):
     """
     plot_names = predictions["image_path"].unique()
     if len(plot_names) > 1:
-        raise ValueError("More than one plot passed to image crown: {}".format(plot_name))
+        raise ValueError(
+            "More than one plot passed to image crown: {}".format(plot_name)
+        )
     else:
         plot_name = plot_names[0]
 
-    predictions['geometry'] = predictions.apply(
-        lambda x: shapely.geometry.box(x.xmin, x.ymin, x.xmax, x.ymax), axis=1)
-    predictions = gpd.GeoDataFrame(predictions, geometry='geometry')
+    predictions["geometry"] = predictions.apply(
+        lambda x: shapely.geometry.box(x.xmin, x.ymin, x.xmax, x.ymax), axis=1
+    )
+    predictions = gpd.GeoDataFrame(predictions, geometry="geometry")
 
-    ground_df['geometry'] = ground_df.apply(
-        lambda x: shapely.geometry.box(x.xmin, x.ymin, x.xmax, x.ymax), axis=1)
-    ground_df = gpd.GeoDataFrame(ground_df, geometry='geometry')
+    ground_df["geometry"] = ground_df.apply(
+        lambda x: shapely.geometry.box(x.xmin, x.ymin, x.xmax, x.ymax), axis=1
+    )
+    ground_df = gpd.GeoDataFrame(ground_df, geometry="geometry")
 
     # match
     result = IoU.compute_IoU(ground_df, predictions)
 
     # add the label classes
     result["predicted_label"] = result.prediction_id.apply(
-        lambda x: predictions.label.loc[x] if pd.notnull(x) else x)
+        lambda x: predictions.label.loc[x] if pd.notnull(x) else x
+    )
     result["true_label"] = result.truth_id.apply(lambda x: ground_df.label.loc[x])
 
     if savedir:
@@ -71,22 +76,28 @@ def compute_class_recall(results):
         return class_recall
 
     for name, group in box_results.groupby("true_label"):
-        class_recall_dict[name] = sum(
-            group.true_label == group.predicted_label) / group.shape[0]
-        number_of_predictions = box_results[box_results.predicted_label == name].shape[0]
+        class_recall_dict[name] = (
+            sum(group.true_label == group.predicted_label) / group.shape[0]
+        )
+        number_of_predictions = box_results[box_results.predicted_label == name].shape[
+            0
+        ]
         if number_of_predictions == 0:
             class_precision_dict[name] = 0
         else:
-            class_precision_dict[name] = sum(
-                group.true_label == group.predicted_label) / number_of_predictions
+            class_precision_dict[name] = (
+                sum(group.true_label == group.predicted_label) / number_of_predictions
+            )
         class_size[name] = group.shape[0]
 
-    class_recall = pd.DataFrame({
-        "label": class_recall_dict.keys(),
-        "recall": pd.Series(class_recall_dict),
-        "precision": pd.Series(class_precision_dict),
-        "size": pd.Series(class_size)
-    }).reset_index(drop=True)
+    class_recall = pd.DataFrame(
+        {
+            "label": class_recall_dict.keys(),
+            "recall": pd.Series(class_recall_dict),
+            "precision": pd.Series(class_precision_dict),
+            "size": pd.Series(class_size),
+        }
+    ).reset_index(drop=True)
 
     return class_recall
 
@@ -115,30 +126,35 @@ def evaluate(predictions, ground_df, root_dir, iou_threshold=0.4, savedir=None):
     box_precisions = []
     for image_path, group in ground_df.groupby("image_path"):
         # clean indices
-        image_predictions = predictions[predictions["image_path"] ==
-                                        image_path].reset_index(drop=True)
+        image_predictions = predictions[
+            predictions["image_path"] == image_path
+        ].reset_index(drop=True)
 
         # If empty, add to list without computing IoU
         if image_predictions.empty:
-            result = pd.DataFrame({
-                "truth_id": group.index.values,
-                "prediction_id": None,
-                "IoU": 0,
-                "predicted_label": None,
-                "score": None,
-                "match": None,
-                "true_label": group.label
-            })
+            result = pd.DataFrame(
+                {
+                    "truth_id": group.index.values,
+                    "prediction_id": None,
+                    "IoU": 0,
+                    "predicted_label": None,
+                    "score": None,
+                    "match": None,
+                    "true_label": group.label,
+                }
+            )
             # An empty prediction set has recall of 0, precision of NA.
             box_recalls.append(0)
             results.append(result)
             continue
         else:
             group = group.reset_index(drop=True)
-            result = evaluate_image(predictions=image_predictions,
-                                    ground_df=group,
-                                    root_dir=root_dir,
-                                    savedir=savedir)
+            result = evaluate_image(
+                predictions=image_predictions,
+                ground_df=group,
+                root_dir=root_dir,
+                savedir=savedir,
+            )
 
         result["image_path"] = image_path
         result["match"] = result.IoU > iou_threshold
@@ -160,5 +176,6 @@ def evaluate(predictions, ground_df, root_dir, iou_threshold=0.4, savedir=None):
         "results": results,
         "box_precision": box_precision,
         "box_recall": box_recall,
-        "class_recall": class_recall
+        "class_recall": class_recall,
+        "box_IoU": np.mean(result.IoU),
     }

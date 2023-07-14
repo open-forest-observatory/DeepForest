@@ -21,12 +21,13 @@ from deepforest import _ROOT
 def read_config(config_path):
     """Read config yaml file"""
     try:
-        with open(config_path, 'r') as f:
+        with open(config_path, "r") as f:
             config = yaml.load(f, Loader=yaml.FullLoader)
 
     except Exception as e:
-        raise FileNotFoundError("There is no config at {}, yields {}".format(
-            config_path, e))
+        raise FileNotFoundError(
+            "There is no config at {}, yields {}".format(config_path, e)
+        )
 
     return config
 
@@ -51,7 +52,8 @@ class DownloadProgressBar(tqdm):
 
 
 def use_bird_release(
-        save_dir=os.path.join(_ROOT, "data/"), prebuilt_model="bird", check_release=True):
+    save_dir=os.path.join(_ROOT, "data/"), prebuilt_model="bird", check_release=True
+):
     """
     Check the existence of, or download the latest model release from github
     Args:
@@ -70,11 +72,13 @@ def use_bird_release(
         _json = json.loads(
             urllib.request.urlopen(
                 urllib.request.Request(
-                    'https://api.github.com/repos/Weecology/BirdDetector/releases/latest',
-                    headers={'Accept': 'application/vnd.github.v3+json'},
-                )).read())
-        asset = _json['assets'][0]
-        url = asset['browser_download_url']
+                    "https://api.github.com/repos/Weecology/BirdDetector/releases/latest",
+                    headers={"Accept": "application/vnd.github.v3+json"},
+                )
+            ).read()
+        )
+        asset = _json["assets"][0]
+        url = asset["browser_download_url"]
 
         # Check the release tagged locally
         try:
@@ -84,17 +88,18 @@ def use_bird_release(
 
         # Download the current release it doesn't exist
         if not release_txt.current_bird_release[0] == _json["html_url"]:
+            print(
+                "Downloading model from BirdDetector release {}, see {} for details".format(
+                    _json["tag_name"], _json["html_url"]
+                )
+            )
 
-            print("Downloading model from BirdDetector release {}, see {} for details".
-                  format(_json["tag_name"], _json["html_url"]))
-
-            with DownloadProgressBar(unit='B',
-                                     unit_scale=True,
-                                     miniters=1,
-                                     desc=url.split('/')[-1]) as t:
-                urllib.request.urlretrieve(url,
-                                           filename=output_path,
-                                           reporthook=t.update_to)
+            with DownloadProgressBar(
+                unit="B", unit_scale=True, miniters=1, desc=url.split("/")[-1]
+            ) as t:
+                urllib.request.urlretrieve(
+                    url, filename=output_path, reporthook=t.update_to
+                )
 
             print("Model was downloaded and saved to {}".format(output_path))
 
@@ -102,29 +107,34 @@ def use_bird_release(
             release_txt = pd.DataFrame({"current_bird_release": [_json["html_url"]]})
             release_txt.to_csv(save_dir + "current_bird_release.csv")
         else:
-            print("Model from BirdDetector Repo release {} was already downloaded. "
-                  "Loading model from file.".format(_json["html_url"]))
+            print(
+                "Model from BirdDetector Repo release {} was already downloaded. "
+                "Loading model from file.".format(_json["html_url"])
+            )
 
         return _json["html_url"], output_path
     else:
         try:
             release_txt = pd.read_csv(save_dir + "current_release.csv")
         except BaseException:
-            raise ValueError("Check release argument is {}, but no release has been "
-                             "previously downloaded".format(check_release))
+            raise ValueError(
+                "Check release argument is {}, but no release has been "
+                "previously downloaded".format(check_release)
+            )
 
         return release_txt.current_release[0], output_path
 
 
 def use_release(
-        save_dir=os.path.join(_ROOT, "data/"), prebuilt_model="NEON", check_release=True):
+    save_dir=os.path.join(_ROOT, "data/"), prebuilt_model="NEON", check_release=True
+):
     """
     Check the existence of, or download the latest model release from github
     Args:
         save_dir: Directory to save filepath, default to "data" in deepforest repo
         prebuilt_model: Currently only accepts "NEON", but could be expanded to include other prebuilt models. The local model will be called prebuilt_model.h5 on disk.
         check_release (logical): whether to check github for a model recent release. In cases where you are hitting the github API rate limit, set to False and any local model will be downloaded. If no model has been downloaded an error will raise.
-        
+
     Returns: release_tag, output_path (str): path to downloaded model
 
     """
@@ -136,11 +146,13 @@ def use_release(
         _json = json.loads(
             urllib.request.urlopen(
                 urllib.request.Request(
-                    'https://api.github.com/repos/Weecology/DeepForest/releases/latest',
-                    headers={'Accept': 'application/vnd.github.v3+json'},
-                )).read())
-        asset = _json['assets'][0]
-        url = asset['browser_download_url']
+                    "https://api.github.com/repos/Weecology/DeepForest/releases/latest",
+                    headers={"Accept": "application/vnd.github.v3+json"},
+                )
+            ).read()
+        )
+        asset = _json["assets"][0]
+        url = asset["browser_download_url"]
 
         # Check the release tagged locally
         try:
@@ -150,17 +162,17 @@ def use_release(
 
         # Download the current release it doesn't exist
         if not release_txt.current_release[0] == _json["html_url"]:
+            print(
+                "Downloading model from DeepForest release {}, see {} "
+                "for details".format(_json["tag_name"], _json["html_url"])
+            )
 
-            print("Downloading model from DeepForest release {}, see {} "
-                  "for details".format(_json["tag_name"], _json["html_url"]))
-
-            with DownloadProgressBar(unit='B',
-                                     unit_scale=True,
-                                     miniters=1,
-                                     desc=url.split('/')[-1]) as t:
-                urllib.request.urlretrieve(url,
-                                           filename=output_path,
-                                           reporthook=t.update_to)
+            with DownloadProgressBar(
+                unit="B", unit_scale=True, miniters=1, desc=url.split("/")[-1]
+            ) as t:
+                urllib.request.urlretrieve(
+                    url, filename=output_path, reporthook=t.update_to
+                )
 
             print("Model was downloaded and saved to {}".format(output_path))
 
@@ -168,16 +180,20 @@ def use_release(
             release_txt = pd.DataFrame({"current_release": [_json["html_url"]]})
             release_txt.to_csv(save_dir + "current_release.csv")
         else:
-            print("Model from DeepForest release {} was already downloaded. "
-                  "Loading model from file.".format(_json["html_url"]))
+            print(
+                "Model from DeepForest release {} was already downloaded. "
+                "Loading model from file.".format(_json["html_url"])
+            )
 
         return _json["html_url"], output_path
     else:
         try:
             release_txt = pd.read_csv(save_dir + "current_release.csv")
         except BaseException:
-            raise ValueError("Check release argument is {}, but no release "
-                             "has been previously downloaded".format(check_release))
+            raise ValueError(
+                "Check release argument is {}, but no release "
+                "has been previously downloaded".format(check_release)
+            )
 
         return release_txt.current_release[0], output_path
 
@@ -200,8 +216,11 @@ def xml_to_annotations(xml_path):
     try:
         tile_xml = doc["annotation"]["object"]
     except Exception as e:
-        raise Exception("error {} for path {} with doc annotation{}".format(
-            e, xml_path, doc["annotation"]))
+        raise Exception(
+            "error {} for path {} with doc annotation{}".format(
+                e, xml_path, doc["annotation"]
+            )
+        )
 
     xmin = []
     xmax = []
@@ -216,13 +235,13 @@ def xml_to_annotations(xml_path):
             xmax.append(tree["bndbox"]["xmax"])
             ymin.append(tree["bndbox"]["ymin"])
             ymax.append(tree["bndbox"]["ymax"])
-            label.append(tree['name'])
+            label.append(tree["name"])
     else:
         xmin.append(tile_xml["bndbox"]["xmin"])
         xmax.append(tile_xml["bndbox"]["xmax"])
         ymin.append(tile_xml["bndbox"]["ymin"])
         ymax.append(tile_xml["bndbox"]["ymax"])
-        label.append(tile_xml['name'])
+        label.append(tile_xml["name"])
 
     rgb_name = os.path.basename(doc["annotation"]["filename"])
 
@@ -232,30 +251,30 @@ def xml_to_annotations(xml_path):
     ymin = [round_with_floats(x) for x in ymin]
     ymax = [round_with_floats(x) for x in ymax]
 
-    annotations = pd.DataFrame({
-        "image_path": rgb_name,
-        "xmin": xmin,
-        "ymin": ymin,
-        "xmax": xmax,
-        "ymax": ymax,
-        "label": label
-    })
-    return (annotations)
+    annotations = pd.DataFrame(
+        {
+            "image_path": rgb_name,
+            "xmin": xmin,
+            "ymin": ymin,
+            "xmax": xmax,
+            "ymax": ymax,
+            "label": label,
+        }
+    )
+    return annotations
 
 
-def shapefile_to_annotations(shapefile,
-                             rgb,
-                             buffer_size=0.5,
-                             convert_to_boxes=False,
-                             savedir="."):
+def shapefile_to_annotations(
+    shapefile, rgb, buffer_size=0.5, convert_to_boxes=False, savedir="."
+):
     """
     Convert a shapefile of annotations into annotations csv file for DeepForest training and evaluation
     Args:
         shapefile: Path to a shapefile on disk. If a label column is present, it will be used, else all labels are assumed to be "Tree"
         rgb: Path to the RGB image on disk
         savedir: Directory to save csv files
-        buffer_size: size of point to box expansion in map units of the target object, meters for projected data, pixels for unprojected data. The buffer_size is added to each side of the x,y point to create the box. 
-        convert_to_boxes (False): If True, convert the point objects in the shapefile into bounding boxes with size 'buffer_size'.  
+        buffer_size: size of point to box expansion in map units of the target object, meters for projected data, pixels for unprojected data. The buffer_size is added to each side of the x,y point to create the box.
+        convert_to_boxes (False): If True, convert the point objects in the shapefile into bounding boxes with size 'buffer_size'.
     Returns:
         results: a pandas dataframe
     """
@@ -270,9 +289,10 @@ def shapefile_to_annotations(shapefile,
         ]
         gdf["geometry"] = [
             shapely.geometry.box(left, bottom, right, top)
-            for left, bottom, right, top in gdf.geometry.buffer(buffer_size).bounds.values
+            for left, bottom, right, top in gdf.geometry.buffer(
+                buffer_size
+            ).bounds.values
         ]
-
 
     # raster bounds
     with rasterio.open(rgb) as src:
@@ -309,15 +329,17 @@ def shapefile_to_annotations(shapefile,
     df["image_path"] = os.path.basename(rgb)
 
     # select columns
-    result = df[[
-        "image_path", "tile_xmin", "tile_ymin", "tile_xmax", "tile_ymax", "label"
-    ]]
-    result = result.rename(columns={
-        "tile_xmin": "xmin",
-        "tile_ymin": "ymin",
-        "tile_xmax": "xmax",
-        "tile_ymax": "ymax"
-    })
+    result = df[
+        ["image_path", "tile_xmin", "tile_ymin", "tile_xmax", "tile_ymax", "label"]
+    ]
+    result = result.rename(
+        columns={
+            "tile_xmin": "xmin",
+            "tile_ymin": "ymin",
+            "tile_xmax": "xmax",
+            "tile_ymax": "ymax",
+        }
+    )
 
     # ensure no zero area polygons due to rounding to pixel size
     result = result[~(result.xmin == result.xmax)]
@@ -337,7 +359,8 @@ def round_with_floats(x):
             "These coordinates were rounded to nearest int. "
             "All coordinates must correspond to pixels in the image coordinate system. "
             "If you are attempting to use projected data, "
-            "first convert it into image coordinates see FAQ for suggestions.")
+            "first convert it into image coordinates see FAQ for suggestions."
+        )
         result = int(np.round(float(x)))
 
     return result
@@ -346,24 +369,29 @@ def round_with_floats(x):
 def check_file(df):
     """Check a file format for correct column names and structure"""
 
-    if not all(x in df.columns
-               for x in ["image_path", "xmin", "xmax", "ymin", "ymax", "label"]):
-        raise IOError("Input file has incorrect column names, "
-                      "the following columns must exist "
-                      "'image_path','xmin','ymin','xmax','ymax','label'.")
+    if not all(
+        x in df.columns for x in ["image_path", "xmin", "xmax", "ymin", "ymax", "label"]
+    ):
+        raise IOError(
+            "Input file has incorrect column names, "
+            "the following columns must exist "
+            "'image_path','xmin','ymin','xmax','ymax','label'."
+        )
 
     return df
 
 
 def check_image(image):
     """Check an image is three channel, channel last format
-        Args:
-           image: numpy array
-        Returns: None, throws error on assert
+    Args:
+       image: numpy array
+    Returns: None, throws error on assert
     """
     if not image.shape[2] == 3:
-        raise ValueError("image is expected have three channels, channel last format, "
-                         "found image with shape {}".format(image.shape))
+        raise ValueError(
+            "image is expected have three channels, channel last format, "
+            "found image with shape {}".format(image.shape)
+        )
 
 
 def boxes_to_shapefile(df, root_dir, projected=True, flip_y_axis=False):
@@ -380,8 +408,10 @@ def boxes_to_shapefile(df, root_dir, projected=True, flip_y_axis=False):
     """
     plot_names = df.image_path.unique()
     if len(plot_names) > 1:
-        raise ValueError("This function projects a single plots worth of data. "
-                         "Multiple plot names found {}".format(plot_names))
+        raise ValueError(
+            "This function projects a single plots worth of data. "
+            "Multiple plot names found {}".format(plot_names)
+        )
     else:
         plot_name = plot_names[0]
 
@@ -394,15 +424,13 @@ def boxes_to_shapefile(df, root_dir, projected=True, flip_y_axis=False):
 
     if projected:
         # Convert image pixel locations to geographic coordinates
-        xmin_coords, ymin_coords = rasterio.transform.xy(transform=transform,
-                                                         rows=df.ymin,
-                                                         cols=df.xmin,
-                                                         offset='center')
+        xmin_coords, ymin_coords = rasterio.transform.xy(
+            transform=transform, rows=df.ymin, cols=df.xmin, offset="center"
+        )
 
-        xmax_coords, ymax_coords = rasterio.transform.xy(transform=transform,
-                                                         rows=df.ymax,
-                                                         cols=df.xmax,
-                                                         offset='center')
+        xmax_coords, ymax_coords = rasterio.transform.xy(
+            transform=transform, rows=df.ymax, cols=df.xmax, offset="center"
+        )
 
         # One box polygon for each tree bounding box
         # Careful of single row edge case where
@@ -428,11 +456,13 @@ def boxes_to_shapefile(df, root_dir, projected=True, flip_y_axis=False):
         if flip_y_axis:
             # See https://gis.stackexchange.com/questions/306684/why-does-qgis-use-negative-y-spacing-in-the-default-raster-geotransform
             # Numpy uses top left 0,0 origin, flip along y axis.
-            df['geometry'] = df.apply(
-                lambda x: shapely.geometry.box(x.xmin, -x.ymin, x.xmax, -x.ymax), axis=1)
+            df["geometry"] = df.apply(
+                lambda x: shapely.geometry.box(x.xmin, -x.ymin, x.xmax, -x.ymax), axis=1
+            )
         else:
-            df['geometry'] = df.apply(
-                lambda x: shapely.geometry.box(x.xmin, x.ymin, x.xmax, x.ymax), axis=1)
+            df["geometry"] = df.apply(
+                lambda x: shapely.geometry.box(x.xmin, x.ymin, x.xmax, x.ymax), axis=1
+            )
         df = gpd.GeoDataFrame(df, geometry="geometry")
 
         return df
@@ -455,21 +485,21 @@ def annotations_to_shapefile(df, transform, crs):
     Returns:
         results: a geopandas dataframe where every entry is the bounding box for a detected tree.
     """
-    warnings.warn("This method is deprecated and will be "
-                  "removed in version DeepForest 2.0.0, "
-                  "please use boxes_to_shapefile which unifies project_boxes and "
-                  "annotations_to_shapefile functionalities")
+    warnings.warn(
+        "This method is deprecated and will be "
+        "removed in version DeepForest 2.0.0, "
+        "please use boxes_to_shapefile which unifies project_boxes and "
+        "annotations_to_shapefile functionalities"
+    )
 
     # Convert image pixel locations to geographic coordinates
-    xmin_coords, ymin_coords = rasterio.transform.xy(transform=transform,
-                                                     rows=df.ymin,
-                                                     cols=df.xmin,
-                                                     offset='center')
+    xmin_coords, ymin_coords = rasterio.transform.xy(
+        transform=transform, rows=df.ymin, cols=df.xmin, offset="center"
+    )
 
-    xmax_coords, ymax_coords = rasterio.transform.xy(transform=transform,
-                                                     rows=df.ymax,
-                                                     cols=df.xmax,
-                                                     offset='center')
+    xmax_coords, ymax_coords = rasterio.transform.xy(
+        transform=transform, rows=df.ymax, cols=df.xmax, offset="center"
+    )
 
     # One box polygon for each tree bounding box
     box_coords = zip(xmin_coords, ymin_coords, xmax_coords, ymax_coords)
@@ -493,13 +523,17 @@ def project_boxes(df, root_dir, transform=True):
     root_dir: directory of images to lookup image_path column
     transform: If true, convert from image to geographic coordinates
     """
-    warnings.warn("This method is deprecated and will be removed in version "
-                  "DeepForest 2.0.0, please use boxes_to_shapefile which "
-                  "unifies project_boxes and annotations_to_shapefile functionalities")
+    warnings.warn(
+        "This method is deprecated and will be removed in version "
+        "DeepForest 2.0.0, please use boxes_to_shapefile which "
+        "unifies project_boxes and annotations_to_shapefile functionalities"
+    )
     plot_names = df.image_path.unique()
     if len(plot_names) > 1:
-        raise ValueError("This function projects a single plots worth of data. "
-                         "Multiple plot names found {}".format(plot_names))
+        raise ValueError(
+            "This function projects a single plots worth of data. "
+            "Multiple plot names found {}".format(plot_names)
+        )
     else:
         plot_name = plot_names[0]
 
@@ -518,13 +552,15 @@ def project_boxes(df, root_dir, transform=True):
         df["ymax"] = bounds.top - (df["ymax"].astype(float) * pixelSizeY)
 
     # combine column to a shapely Box() object, save shapefile
-    df['geometry'] = df.apply(
-        lambda x: shapely.geometry.box(x.xmin, x.ymin, x.xmax, x.ymax), axis=1)
-    df = gpd.GeoDataFrame(df, geometry='geometry')
+    df["geometry"] = df.apply(
+        lambda x: shapely.geometry.box(x.xmin, x.ymin, x.xmax, x.ymax), axis=1
+    )
+    df = gpd.GeoDataFrame(df, geometry="geometry")
 
     df.crs = crs
 
     return df
+
 
 def resample_to_target_gsd(src_file, dst_file, target_gsd=0.1):
     with rasterio.open(src_file) as dataset:
@@ -549,63 +585,82 @@ def resample_to_target_gsd(src_file, dst_file, target_gsd=0.1):
             out_shape=(
                 dataset.count,
                 int(np.ceil(original_height * scale_factor_y)),
-                int(np.ceil(original_width * scale_factor_x))
+                int(np.ceil(original_width * scale_factor_x)),
             ),
-            resampling=rasterio.enums.Resampling.bilinear
+            resampling=rasterio.enums.Resampling.bilinear,
         )
-        #data = data[:3]
+        # data = data[:3]
         _, output_height, output_width = data.shape
         # scale image transform
         transform = dataset.transform * dataset.transform.scale(
-            (original_width / output_width ),
-            (original_height / output_height )
+            (original_width / output_width), (original_height / output_height)
         )
-        profile.update({"height": output_height,
-                        "width": output_width,
-                       "transform": transform})
+        profile.update(
+            {"height": output_height, "width": output_width, "transform": transform}
+        )
 
     with rasterio.open(dst_file, "w", **profile) as dataset:
         dataset.write(data)
 
+
 # Taken from
 # https://gis.stackexchange.com/questions/367832/using-rasterio-to-crop-image-using-pixel-coordinates-instead-of-geographic-coord
-def crop_to_window(input_file, output_file,
-                    min_x_geospatial, min_y_geospatial, max_x_geospatial, max_y_geospatial,
-                    padding_geospatial=0, offset_geospatial_xy=(0,0)):
+def crop_to_window(
+    input_file,
+    output_file,
+    min_x_geospatial,
+    min_y_geospatial,
+    max_x_geospatial,
+    max_y_geospatial,
+    padding_geospatial=0,
+    offset_geospatial_xy=(0, 0),
+):
     """
     Locations in the units of the CRS
     padding in the units of the CRS
     shift in the units of the CRS
     """
     with rasterio.open(input_file) as src:
-        min_x_geospatial = min_x_geospatial - padding_geospatial - offset_geospatial_xy[0] 
-        max_x_geospatial = max_x_geospatial + padding_geospatial - offset_geospatial_xy[0]
+        min_x_geospatial = (
+            min_x_geospatial - padding_geospatial - offset_geospatial_xy[0]
+        )
+        max_x_geospatial = (
+            max_x_geospatial + padding_geospatial - offset_geospatial_xy[0]
+        )
 
-        min_y_geospatial = min_y_geospatial - padding_geospatial + offset_geospatial_xy[1]
-        max_y_geospatial = max_y_geospatial + padding_geospatial + offset_geospatial_xy[1]
+        min_y_geospatial = (
+            min_y_geospatial - padding_geospatial + offset_geospatial_xy[1]
+        )
+        max_y_geospatial = (
+            max_y_geospatial + padding_geospatial + offset_geospatial_xy[1]
+        )
 
         # Note that y values are switched because of different convention
         min_i_pixels, min_j_pixels = src.index(min_x_geospatial, max_y_geospatial)
-        max_i_pixels, max_j_pixels = src.index(max_x_geospatial, min_y_geospatial)     
-        # Create a Window and calculate the transform from the source dataset    
-        window = Window.from_slices((min_i_pixels, max_i_pixels), (min_j_pixels, max_j_pixels))
+        max_i_pixels, max_j_pixels = src.index(max_x_geospatial, min_y_geospatial)
+        min_i_pixels = max(min_i_pixels, 0)
+        min_j_pixels = max(min_j_pixels, 0)
+        max_i_pixels = min(max_i_pixels, src.height - 1)
+        max_j_pixels = min(max_j_pixels, src.width - 1)
+        # Create a Window and calculate the transform from the source dataset
+        window = Window.from_slices(
+            (min_i_pixels, max_i_pixels), (min_j_pixels, max_j_pixels)
+        )
         transform = src.window_transform(window)
 
         if offset_geospatial_xy is not None:
-            transform = transform * rasterio.Affine(1, 0, offset_geospatial_xy[0],
-                                                0, 1, offset_geospatial_xy[1])
+            transform = transform * rasterio.Affine(
+                1, 0, offset_geospatial_xy[0], 0, 1, offset_geospatial_xy[1]
+            )
 
         width = max_j_pixels - min_j_pixels
         height = max_i_pixels - min_i_pixels
 
         # Create a new cropped raster to write to
         profile = src.profile
-        profile.update({
-            'height': height,
-            'width': width,
-            'transform': transform})
+        profile.update({"height": height, "width": width, "transform": transform})
 
-        with rasterio.open(output_file, 'w', **profile) as dst:
+        with rasterio.open(output_file, "w", **profile) as dst:
             # Read the data from the window and write it to the output raster
             dst.write(src.read(window=window))
         resample_to_target_gsd(output_file, output_file)

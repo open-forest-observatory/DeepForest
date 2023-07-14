@@ -60,7 +60,6 @@ def crop_to_annotations(image_file, geofile, output_file):
     max_x = np.max(gdf.geometry.bounds.maxx.to_numpy())
     min_y = np.min(gdf.geometry.bounds.miny.to_numpy())
     max_y = np.max(gdf.geometry.bounds.maxy.to_numpy())
-
     crop_to_window(
         image_file,
         output_file,
@@ -113,73 +112,36 @@ def train_model(annotations_file, n_epochs, model_savefile):
     model.save_model(model_savefile)
 
 
-def parse_args():
-    parser = argparse.ArgumentParser()
-    parser.add_argument(
-        "--training-annotations",
-        default="/ofo-share/repos-david/GaiaColabData/data/level_02/annotations/per_collect/stowe_anew/2022_07_14/collect_000/automated_000/tree_boxes_David_R.shp",
-    )
-    parser.add_argument(
-        "--ortho-file",
-        default="/ofo-share/repos-david/GaiaColabData/data/level_02/photogrametry/metashape/per_collect/stowe_anew/2023_06_15/collect_000/manual_000/exports/stow_anew_2023_06_15_collect_000_manual_000_ortho_mesh_georef.tif",
-    )
-    parser.add_argument(
-        "--remote-sensing-file",
-        default="/ofo-share/repos-david/GaiaColabData/data/level_00/remote_sensing/naip_crop_m_4407237_nw_18_060_20210920.tif",
-    )
-    parser.add_argument(
-        "--workdir",
-        default="/ofo-share/repos-david/GaiaColabData/data/level_03/tree_detections/deep_forest/per_collect/stowe_anew/2023_06_15/collect_000/multi_res_experiment",
-    )
-    parser.add_argument("--GSD", type=float, default=0.1)
-    # parser.add_argument("--test-crop", nargs="4", default=(), type=float)
-    parser.add_argument("--n-epochs-annotations", default=50, type=int)
-    args = parser.parse_args()
-    return args
-
-
-def main(
-    training_annotations,
-    ortho_file,
-    remote_sensing_file,
+def preprocess_files(
     workdir,
+    remote_sensing_file,
+    ortho_file,
+    training_annotations,
+    train_box_file,
+    test_box_file,
     GSD,
-    n_epochs_annotations,
 ):
     shutil.rmtree(workdir, ignore_errors=True)
     ## Create sub directories
-    inputs_folder = Path(workdir, "inputs")
-    preds_folder = Path(workdir, "preds")
-    models_folder = Path(workdir, "models")
-    anns_folder = Path(workdir, "anns")
-    ortho_crops_folder = Path(workdir, "crops", "ortho")
-    RS_crops_folder = Path(workdir, "crops", "RS")
-    ortho_preds_base_crops_folder = Path(workdir, "crops", "ortho_preds_base")
-    ortho_preds_finetuned_crops_folder = Path(workdir, "crops", "ortho_preds_finetuned")
+    folders = {
+        "inputs": Path(workdir, "inputs"),
+        "preds": Path(workdir, "preds"),
+        "models": Path(workdir, "models"),
+        "anns": Path(workdir, "anns"),
+        "ortho_crops": Path(workdir, "crops", "ortho"),
+        "RS_crops": Path(workdir, "crops", "RS"),
+        "ortho_preds_base_crop": Path(workdir, "crops", "ortho_preds_base"),
+        "ortho_preds_finetuned_crops": Path(workdir, "crops", "ortho_preds_finetuned"),
+    }
     # Ensure that they exist
-    [
-        os.makedirs(folder, exist_ok=True)
-        for folder in (
-            inputs_folder,
-            preds_folder,
-            models_folder,
-            anns_folder,
-            ortho_crops_folder,
-            RS_crops_folder,
-            ortho_preds_base_crops_folder,
-            ortho_preds_finetuned_crops_folder,
-        )
-    ]
+    [os.makedirs(folder, exist_ok=True) for folder in folders.values()]
 
     ## Resampled files and copy annotation
-    resampled_RS_file = Path(inputs_folder, Path(remote_sensing_file).name)
-    resampled_ortho_file = Path(inputs_folder, Path(ortho_file).name)
+    resampled_RS_file = Path(folders["inputs"], Path(remote_sensing_file).name)
+    resampled_ortho_file = Path(folders["inputs"], Path(ortho_file).name)
 
-    # TODO update them to not include the test set
-    drone_RS_file = resampled_RS_file
-    drone_ortho_file = resampled_ortho_file
     shutil.copyfile(
-        training_annotations, Path(inputs_folder, Path(training_annotations).name)
+        training_annotations, Path(folders["inputs"], Path(training_annotations).name)
     )
 
     # Crop both datasets to the extent of the ortho and resample
@@ -198,30 +160,115 @@ def main(
         output_padding=0,
         output_GSD=GSD,
     )
-    train_ortho_file = Path(
-        resampled_ortho_file.parent,
-        resampled_ortho_file.name + "_train" + resampled_ortho_file.suffix,
+    ortho_files = {
+        name: Path(
+            folders["inputs"],
+            resampled_ortho_file.stem + "_" + name + resampled_ortho_file.suffix,
+        )
+        for name in (
+            "train_drone",
+            "train_annotations",
+            "test_drone",
+            "test_annotations",
+        )
+    }
+    # Concatnate the two
+    RS_files = {
+        name: Path(
+            folders["inputs"],
+            resampled_RS_file.stem + "_" + name + resampled_RS_file.suffix,
+        )
+        for name in (
+            "train_drone",
+            "train_annotations",
+            "test_drone",
+            "test_annotations",
+        )
+    }
+
+    crop_to_annotations(
+        resampled_ortho_file, train_box_file, ortho_files["train_drone"]
     )
-    train_RS_file = Path(
-        resampled_RS_file.parent,
-        resampled_RS_file.name + "_train" + resampled_RS_file.suffix,
+    crop_to_annotations(resampled_ortho_file, test_box_file, ortho_files["test_drone"])
+    crop_to_annotations(
+        ortho_files["train_drone"],
+        training_annotations,
+        ortho_files["train_annotations"],
+    )
+    crop_to_annotations(
+        ortho_files["test_drone"],
+        training_annotations,
+        ortho_files["test_annotations"],
     )
 
-    test_ortho_file = Path(
-        resampled_ortho_file.parent,
-        resampled_ortho_file.name + "_test" + resampled_ortho_file.suffix,
+    crop_to_annotations(resampled_RS_file, train_box_file, RS_files["train_drone"])
+    crop_to_annotations(resampled_RS_file, test_box_file, RS_files["test_drone"])
+    crop_to_annotations(
+        RS_files["train_drone"],
+        training_annotations,
+        RS_files["train_annotations"],
     )
-    test_RS_file = Path(
-        resampled_RS_file.parent,
-        resampled_RS_file.name + "_test" + resampled_RS_file.suffix,
+    crop_to_annotations(
+        RS_files["test_drone"],
+        training_annotations,
+        RS_files["test_annotations"],
     )
 
-    crop_to_annotations(resampled_ortho_file, training_annotations, train_ortho_file)
-    crop_to_annotations(resampled_RS_file, training_annotations, train_RS_file)
-    # TODO update this to actually be for the test
-    crop_to_annotations(resampled_ortho_file, training_annotations, test_ortho_file)
-    crop_to_annotations(resampled_RS_file, training_annotations, test_RS_file)
 
+def parse_args():
+    parser = argparse.ArgumentParser()
+    parser.add_argument(
+        "--training-annotations",
+        default="/ofo-share/repos-david/GaiaColabData/data/level_02/annotations/per_collect/stowe_anew/2022_07_14/collect_000/automated_000/tree_boxes_David_R.shp",
+    )
+    parser.add_argument(
+        "--ortho-file",
+        default="/ofo-share/repos-david/GaiaColabData/data/level_02/photogrametry/metashape/per_collect/stowe_anew/2023_06_15/collect_000/manual_000/exports/stow_anew_2023_06_15_collect_000_manual_000_ortho_mesh_georef.tif",
+    )
+    parser.add_argument(
+        "--remote-sensing-file",
+        default="/ofo-share/repos-david/GaiaColabData/data/level_00/remote_sensing/naip_crop_m_4407237_nw_18_060_20210920.tif",
+    )
+    parser.add_argument(
+        "--workdir",
+        default="/ofo-share/repos-david/GaiaColabData/data/level_03/tree_detections/deep_forest/per_collect/stowe_anew/2023_06_15/collect_000/multi_res_experiment",
+    )
+    parser.add_argument(
+        "--train-box-file",
+        default="/ofo-share/repos-david/GaiaColabData/data/level_02/annotations/per_collect/stowe_anew/2022_07_14/collect_000/automated_000/train_box.shp",
+        help="Geofile. The annotations and drone data within this box will be used for training",
+    )
+    parser.add_argument(
+        "--test-box-file",
+        default="/ofo-share/repos-david/GaiaColabData/data/level_02/annotations/per_collect/stowe_anew/2022_07_14/collect_000/automated_000/test_box.shp",
+        help="Geofile. The data this box will be used for testing, and evaluated against the annotations",
+    )
+    parser.add_argument("--GSD", type=float, default=0.1)
+    # parser.add_argument("--test-crop", nargs="4", default=(), type=float)
+    parser.add_argument("--n-epochs-annotations", default=50, type=int)
+    args = parser.parse_args()
+    return args
+
+
+def main(
+    training_annotations,
+    ortho_file,
+    remote_sensing_file,
+    workdir,
+    GSD,
+    n_epochs_annotations,
+    train_box_file,
+    test_box_file,
+):
+    preprocess_files(
+        workdir=workdir,
+        remote_sensing_file=remote_sensing_file,
+        ortho_file=ortho_file,
+        training_annotations=training_annotations,
+        test_box_file=test_box_file,
+        train_box_file=train_box_file,
+        GSD=GSD,
+    )
     # Create the model
     base_model = create_base_model()
 

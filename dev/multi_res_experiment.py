@@ -130,7 +130,7 @@ def preprocess_files(
         "anns": Path(workdir, "anns"),
         "ortho_crops": Path(workdir, "crops", "ortho"),
         "RS_crops": Path(workdir, "crops", "RS"),
-        "ortho_preds_base_crop": Path(workdir, "crops", "ortho_preds_base"),
+        "ortho_preds_base_crops": Path(workdir, "crops", "ortho_preds_base"),
         "ortho_preds_finetuned_crops": Path(workdir, "crops", "ortho_preds_finetuned"),
     }
     # Ensure that they exist
@@ -213,6 +213,7 @@ def preprocess_files(
         training_annotations,
         RS_files["test_annotations"],
     )
+    return folders, ortho_files, RS_files, resampled_RS_file, resampled_ortho_file
 
 
 def parse_args():
@@ -260,7 +261,13 @@ def main(
     train_box_file,
     test_box_file,
 ):
-    preprocess_files(
+    (
+        folders,
+        ortho_files,
+        RS_files,
+        resampled_RS_file,
+        resampled_ortho_file,
+    ) = preprocess_files(
         workdir=workdir,
         remote_sensing_file=remote_sensing_file,
         ortho_file=ortho_file,
@@ -273,18 +280,18 @@ def main(
     base_model = create_base_model()
 
     # Generate predictions with the base model
-    ortho_base_preds_file = Path(preds_folder, "ortho_base_preds.geojson")
-    RS_base_preds_file = Path(preds_folder, "RS_base_preds.geojson")
+    ortho_base_preds_file = Path(folders["preds"], "ortho_base_preds.geojson")
+    RS_base_preds_file = Path(folders["preds"], "RS_base_preds.geojson")
     base_ortho_eval_dict = predict_and_eval(
         model=base_model,
-        input_image_file=test_ortho_file,
+        input_image_file=ortho_files["test_annotations"],
         output_preds_file=ortho_base_preds_file,
         gt_file=training_annotations,
     )
 
     base_RS_eval_dict = predict_and_eval(
         model=base_model,
-        input_image_file=test_RS_file,
+        input_image_file=RS_files["test_annotations"],
         output_preds_file=RS_base_preds_file,
         gt_file=training_annotations,
     )
@@ -292,23 +299,23 @@ def main(
     # Generated training chips
     train_ortho_annotations_file = create_crops(
         input_annotations_shapefile=training_annotations,
-        input_image_file=train_ortho_file,
+        input_image_file=ortho_files["train_annotations"],
         workdir=workdir,
-        annotations_csv=Path(anns_folder, "ortho_anns.csv"),
-        crop_folder=ortho_crops_folder,
+        annotations_csv=Path(folders["anns"], "ortho_anns.csv"),
+        crop_folder=folders["ortho_crops"],
     )
 
     train_RS_annotations_file = create_crops(
         input_annotations_shapefile=training_annotations,
-        input_image_file=train_RS_file,
+        input_image_file=RS_files["train_annotations"],
         workdir=workdir,
-        annotations_csv=Path(anns_folder, "RS_anns.csv"),
-        crop_folder=RS_crops_folder,
+        annotations_csv=Path(folders["anns"], "RS_anns.csv"),
+        crop_folder=folders["RS_crops"],
     )
 
     # Finetune new models based on small ammount of labeled data
-    finetuned_model_ortho_file = Path(models_folder, "ortho_retrained.pth")
-    finetuned_model_RS_file = Path(models_folder, "RS_retrained.pth")
+    finetuned_model_ortho_file = Path(folders["models"], "ortho_retrained.pth")
+    finetuned_model_RS_file = Path(folders["models"], "RS_retrained.pth")
 
     train_model(
         annotations_file=train_ortho_annotations_file,
@@ -324,57 +331,57 @@ def main(
     # Generate predictions
     finetune_ortho_eval_dict = predict_and_eval(
         model=create_reload_model(finetuned_model_ortho_file),
-        input_image_file=test_ortho_file,
-        output_preds_file=Path(preds_folder, "ortho_finetuned_preds.geojson"),
+        input_image_file=ortho_files["test_annotations"],
+        output_preds_file=Path(folders["preds"], "ortho_finetuned_preds.geojson"),
         gt_file=training_annotations,
     )
     finetune_RS_eval_dict = predict_and_eval(
         model=create_reload_model(finetuned_model_RS_file),
-        input_image_file=test_RS_file,
-        output_preds_file=Path(preds_folder, "RS_finetuned_preds.geojson"),
+        input_image_file=RS_files["test_annotations"],
+        output_preds_file=Path(folders["preds"], "RS_finetuned_preds.geojson"),
         gt_file=training_annotations,
     )
 
     # Generate predictions on the whole drone region
     ortho_base_preds_whole_region_file = Path(
-        preds_folder, "ortho_base_preds_whole_region.geojson"
+        folders["preds"], "ortho_base_preds_whole_region.geojson"
     )
     ortho_finetuned_preds_whole_region_file = Path(
-        preds_folder, "ortho_finetuned_preds_whole_region.geojson"
+        folders["preds"], "ortho_finetuned_preds_whole_region.geojson"
     )
 
     predict_and_write(
         model=create_base_model(),
-        input_file=drone_ortho_file,
+        input_file=ortho_files["train_drone"],
         output_file=ortho_base_preds_whole_region_file,
     )
     predict_and_write(
         model=create_reload_model(finetuned_model_ortho_file),
-        input_file=drone_ortho_file,
+        input_file=ortho_files["train_drone"],
         output_file=ortho_finetuned_preds_whole_region_file,
     )
 
     # Generated training chips from the drone data predictions
     cropped_ortho_preds_base_annotations_file = create_crops(
         input_annotations_shapefile=ortho_base_preds_whole_region_file,
-        input_image_file=drone_ortho_file,
+        input_image_file=ortho_files["train_drone"],
         workdir=workdir,
-        annotations_csv=Path(anns_folder, "ortho_preds_base_anns.csv"),
-        crop_folder=ortho_preds_base_crops_folder,
+        annotations_csv=Path(folders["anns"], "ortho_preds_base_anns.csv"),
+        crop_folder=folders["ortho_preds_base_crops"],
     )
     cropped_ortho_preds_finetuned_annotations_file = create_crops(
         input_annotations_shapefile=ortho_finetuned_preds_whole_region_file,
-        input_image_file=drone_ortho_file,
+        input_image_file=ortho_files["train_drone"],
         workdir=workdir,
-        annotations_csv=Path(anns_folder, "ortho_preds_finetuned_anns.csv"),
-        crop_folder=ortho_preds_finetuned_crops_folder,
+        annotations_csv=Path(folders["anns"], "ortho_preds_finetuned_anns.csv"),
+        crop_folder=folders["ortho_preds_finetuned_crops"],
     )
     # Train new model from RS data from predictions from the drone
     finetuned_model_ortho_preds_base_file = Path(
-        models_folder, "ortho_preds_base_retrained_RS.pth"
+        folders["models"], "ortho_preds_base_retrained_RS.pth"
     )
     finetuned_model_ortho_preds_finetuned_file = Path(
-        models_folder, "ortho_preds_finetuned_retrained_RS.pth"
+        folders["models"], "ortho_preds_finetuned_retrained_RS.pth"
     )
     train_model(
         annotations_file=cropped_ortho_preds_base_annotations_file,
@@ -391,21 +398,20 @@ def main(
     # Predict
     fineteuned_RS_on_ortho_base_eval_dict = predict_and_eval(
         model=create_reload_model(finetuned_model_ortho_preds_base_file),
-        input_image_file=test_RS_file,
+        input_image_file=RS_files["test_annotations"],
         output_preds_file=Path(
-            preds_folder, "RS_finetuned_preds_from_ortho_base_preds.geojson"
+            folders["preds"], "RS_finetuned_preds_from_ortho_base_preds.geojson"
         ),
         gt_file=training_annotations,
     )
     fineteuned_RS_on_ortho_finetuned_eval_dict = predict_and_eval(
         model=create_reload_model(finetuned_model_ortho_preds_finetuned_file),
-        input_image_file=test_RS_file,
+        input_image_file=RS_files["test_annotations"],
         output_preds_file=Path(
-            preds_folder, "RS_finetuned_preds_from_ortho_finetuned_preds.geojson"
+            folders["preds"], "RS_finetuned_preds_from_ortho_finetuned_preds.geojson"
         ),
         gt_file=training_annotations,
     )
-    breakpoint()
     print(
         " name & recall & precision & IoU \n"
         + f" base ortho & {base_ortho_eval_dict['box_recall']:.3f} & {base_ortho_eval_dict['box_precision']:.3f} & {base_ortho_eval_dict['box_IoU']:.3f}\\\\ \\hline \n"
@@ -415,7 +421,6 @@ def main(
         + f" finetune RS on ortho base & {fineteuned_RS_on_ortho_base_eval_dict['box_recall']:.3f} & {fineteuned_RS_on_ortho_base_eval_dict['box_precision']:.3f} & {fineteuned_RS_on_ortho_base_eval_dict['box_IoU']:.3f}\\\\ \\hline \n"
         + f" finetune RS on ortho finetuned & {fineteuned_RS_on_ortho_finetuned_eval_dict['box_recall']:.3f} & {fineteuned_RS_on_ortho_finetuned_eval_dict['box_precision']:.3f} & {fineteuned_RS_on_ortho_finetuned_eval_dict['box_IoU']:.3f}\\\\ \\hline \n"
     )
-    breakpoint()
 
 
 if __name__ == "__main__":

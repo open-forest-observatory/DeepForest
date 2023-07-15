@@ -143,6 +143,14 @@ def preprocess_files(
     shutil.copyfile(
         training_annotations, Path(folders["inputs"], Path(training_annotations).name)
     )
+    training_df = gpd.read_file(training_annotations)
+    test_box_df = gpd.read_file(test_box_file)
+    xmin, ymin, xmax, ymax = test_box_df.total_bounds
+    cropped_training_df = training_df.cx[xmin:xmax, ymin:ymax]
+    test_annotations_file = Path(
+        folders["inputs"], Path(training_annotations).stem + "_test.shp"
+    )
+    cropped_training_df.to_file(test_annotations_file)
 
     # Crop both datasets to the extent of the ortho and resample
     align_to_reference(
@@ -213,14 +221,14 @@ def preprocess_files(
         training_annotations,
         RS_files["test_annotations"],
     )
-    return folders, ortho_files, RS_files, resampled_RS_file, resampled_ortho_file
+    return folders, ortho_files, RS_files, test_annotations_file
 
 
 def parse_args():
     parser = argparse.ArgumentParser()
     parser.add_argument(
         "--training-annotations",
-        default="/ofo-share/repos-david/GaiaColabData/data/level_02/annotations/per_collect/stowe_anew/2022_07_14/collect_000/automated_000/tree_boxes_David_R.shp",
+        default="/ofo-share/repos-david/GaiaColabData/data/level_02/annotations/per_collect/stowe_anew/2022_07_14/collect_000/automated_000/all_tree_boxes.shp",
     )
     parser.add_argument(
         "--ortho-file",
@@ -260,13 +268,13 @@ def main(
     n_epochs_annotations,
     train_box_file,
     test_box_file,
+    results_file,
 ):
     (
         folders,
         ortho_files,
         RS_files,
-        resampled_RS_file,
-        resampled_ortho_file,
+        test_annotations,
     ) = preprocess_files(
         workdir=workdir,
         remote_sensing_file=remote_sensing_file,
@@ -286,14 +294,14 @@ def main(
         model=base_model,
         input_image_file=ortho_files["test_annotations"],
         output_preds_file=ortho_base_preds_file,
-        gt_file=training_annotations,
+        gt_file=test_annotations,
     )
 
     base_RS_eval_dict = predict_and_eval(
         model=base_model,
         input_image_file=RS_files["test_annotations"],
         output_preds_file=RS_base_preds_file,
-        gt_file=training_annotations,
+        gt_file=test_annotations,
     )
 
     # Generated training chips
@@ -333,13 +341,13 @@ def main(
         model=create_reload_model(finetuned_model_ortho_file),
         input_image_file=ortho_files["test_annotations"],
         output_preds_file=Path(folders["preds"], "ortho_finetuned_preds.geojson"),
-        gt_file=training_annotations,
+        gt_file=test_annotations,
     )
     finetune_RS_eval_dict = predict_and_eval(
         model=create_reload_model(finetuned_model_RS_file),
         input_image_file=RS_files["test_annotations"],
         output_preds_file=Path(folders["preds"], "RS_finetuned_preds.geojson"),
-        gt_file=training_annotations,
+        gt_file=test_annotations,
     )
 
     # Generate predictions on the whole drone region
@@ -402,7 +410,7 @@ def main(
         output_preds_file=Path(
             folders["preds"], "RS_finetuned_preds_from_ortho_base_preds.geojson"
         ),
-        gt_file=training_annotations,
+        gt_file=test_annotations,
     )
     fineteuned_RS_on_ortho_finetuned_eval_dict = predict_and_eval(
         model=create_reload_model(finetuned_model_ortho_preds_finetuned_file),
@@ -410,19 +418,34 @@ def main(
         output_preds_file=Path(
             folders["preds"], "RS_finetuned_preds_from_ortho_finetuned_preds.geojson"
         ),
-        gt_file=training_annotations,
+        gt_file=test_annotations,
     )
-    print(
+    results_string = (
         " name & recall & precision & IoU \n"
-        + f" base ortho & {base_ortho_eval_dict['box_recall']:.3f} & {base_ortho_eval_dict['box_precision']:.3f} & {base_ortho_eval_dict['box_IoU']:.3f}\\\\ \\hline \n"
-        + f" finetuned ortho & {finetune_ortho_eval_dict['box_recall']:.3f} & {finetune_ortho_eval_dict['box_precision']:.3f} & {finetune_ortho_eval_dict['box_IoU']:.3f}\\\\ \\hline \n"
-        + f" base RS & {base_RS_eval_dict['box_recall']:.3f} & {base_RS_eval_dict['box_precision']:.3f} & {base_RS_eval_dict['box_IoU']:.3f}\\\\ \\hline \n"
-        + f" finetune RS & {finetune_RS_eval_dict['box_recall']:.3f} & {finetune_RS_eval_dict['box_precision']:.3f} & {finetune_RS_eval_dict['box_IoU']:.3f}\\\\ \\hline \n"
-        + f" finetune RS on ortho base & {fineteuned_RS_on_ortho_base_eval_dict['box_recall']:.3f} & {fineteuned_RS_on_ortho_base_eval_dict['box_precision']:.3f} & {fineteuned_RS_on_ortho_base_eval_dict['box_IoU']:.3f}\\\\ \\hline \n"
-        + f" finetune RS on ortho finetuned & {fineteuned_RS_on_ortho_finetuned_eval_dict['box_recall']:.3f} & {fineteuned_RS_on_ortho_finetuned_eval_dict['box_precision']:.3f} & {fineteuned_RS_on_ortho_finetuned_eval_dict['box_IoU']:.3f}\\\\ \\hline \n"
+        + f" Base ortho & {base_ortho_eval_dict['box_recall']:.3f} & {base_ortho_eval_dict['box_precision']:.3f} & {base_ortho_eval_dict['box_IoU']:.3f}\\\\ \\hline \n"
+        + f" Finetuned ortho & {finetune_ortho_eval_dict['box_recall']:.3f} & {finetune_ortho_eval_dict['box_precision']:.3f} & {finetune_ortho_eval_dict['box_IoU']:.3f}\\\\ \\hline \n"
+        + f" Base RS & {base_RS_eval_dict['box_recall']:.3f} & {base_RS_eval_dict['box_precision']:.3f} & {base_RS_eval_dict['box_IoU']:.3f}\\\\ \\hline \n"
+        + f" Finetune RS & {finetune_RS_eval_dict['box_recall']:.3f} & {finetune_RS_eval_dict['box_precision']:.3f} & {finetune_RS_eval_dict['box_IoU']:.3f}\\\\ \\hline \n"
+        + f" Finetune RS on ortho base & {fineteuned_RS_on_ortho_base_eval_dict['box_recall']:.3f} & {fineteuned_RS_on_ortho_base_eval_dict['box_precision']:.3f} & {fineteuned_RS_on_ortho_base_eval_dict['box_IoU']:.3f}\\\\ \\hline \n"
+        + f" Finetune RS on ortho finetuned & {fineteuned_RS_on_ortho_finetuned_eval_dict['box_recall']:.3f} & {fineteuned_RS_on_ortho_finetuned_eval_dict['box_precision']:.3f} & {fineteuned_RS_on_ortho_finetuned_eval_dict['box_IoU']:.3f}\\\\ \\hline \n"
     )
+    print(results_string)
+    with open(results_file, "w") as res_file:
+        res_file.write(results_string)
 
 
 if __name__ == "__main__":
     args = parse_args()
-    main(**args.__dict__)
+    # Switch the arguments
+    main(results_file="train.txt", **args.__dict__)
+    main(
+        training_annotations=args.training_annotations,
+        ortho_file=args.ortho_file,
+        remote_sensing_file=args.remote_sensing_file,
+        workdir=args.workdir,
+        GSD=args.GSD,
+        n_epochs_annotations=args.n_epochs_annotations,
+        train_box_file=args.test_box_file,
+        test_box_file=args.train_box_file,
+        results_file="test.txt",
+    )

@@ -6,6 +6,9 @@ import math
 import geopandas as gpd
 import rasterio as rio
 import numpy as np
+from imageio import imwrite
+from copy import copy
+import matplotlib.pyplot as plt
 
 from deepforest import evaluate
 from deepforest.preprocess import split_raster
@@ -18,7 +21,7 @@ from deepforest.utilities import boxes_to_shapefile
 
 def create_base_model():
     model = deepforest_main.deepforest()
-    model.use_release()
+    model.use_release(check_release=False)
     return model
 
 
@@ -26,6 +29,35 @@ def create_reload_model(model_path):
     model = deepforest_main.deepforest.load_from_checkpoint(model_path)
     model.model.score_thresh = 0.1
     return model
+
+
+def print_results(
+    all_metrics,
+    names=(
+        "Base ortho",
+        "Finetuned ortho",
+        "Base RS",
+        "Finetune RS",
+        "Finetune RS on ortho base",
+        "Finetune RS on ortho finetuned",
+    ),
+    required_data=(
+        "drone",
+        "field + drone",
+        "NAIP",
+        "field + NAIP",
+        "drone + NAIP",
+        "field + drone + NAIP",
+    ),
+):
+    all_metrics = np.stack(all_metrics, axis=2)
+    mean_metrics = np.mean(all_metrics, axis=2)
+    std_metrics = np.std(all_metrics, axis=2)
+    res_str = "\\textbf{Required data} & \\textbf{Experiment} & \\textbf{Recall} & \\textbf{Precision} \\\\ \n"
+
+    for i in range(mean_metrics.shape[0]):
+        res_str += f"{required_data[i]} & {names[i]} & {mean_metrics[i,0]:.3f} \pm {std_metrics[i,0]:.3f} & {mean_metrics[i,1]:.3f} \pm {std_metrics[i,1]:.3f} & {mean_metrics[i,2]:.3f} \pm {std_metrics[i,2]:.3f}\\\\ \\hline \n"
+    print(res_str)
 
 
 def create_crops(
@@ -73,8 +105,8 @@ def crop_to_annotations(image_file, geofile, output_file):
 
 def predict_and_write(model, input_file, output_file):
     # Predict in aligned images
-    prediction = model.predict_tile(
-        input_file, return_plot=False, patch_size=400, patch_overlap=0.25
+    plot, prediction = model.predict_tile(
+        input_file, return_plot=True, patch_size=400, patch_overlap=0.25
     )
     if len(prediction) < 10:
         breakpoint()
@@ -82,6 +114,8 @@ def predict_and_write(model, input_file, output_file):
         prediction, str(Path(input_file).parent), flip_y_axis=True  # Needed for QGis
     )
     shapefile.to_file(output_file)
+    imwrite(Path(output_file.parent, output_file.stem + ".png"), plot)
+
     return prediction
 
 
@@ -228,7 +262,7 @@ def parse_args():
     parser = argparse.ArgumentParser()
     parser.add_argument(
         "--training-annotations",
-        default="/ofo-share/repos-david/GaiaColabData/data/level_02/annotations/per_collect/stowe_anew/2022_07_14/collect_000/automated_000/all_tree_boxes.shp",
+        default="/ofo-share/repos-david/GaiaColabData/data/level_02/annotations/per_collect/stowe_anew/2022_07_14/collect_000/automated_000/tree_boxes_David_R.shp",
     )
     parser.add_argument(
         "--ortho-file",
@@ -255,6 +289,11 @@ def parse_args():
     parser.add_argument("--GSD", type=float, default=0.1)
     # parser.add_argument("--test-crop", nargs="4", default=(), type=float)
     parser.add_argument("--n-epochs-annotations", default=50, type=int)
+    parser.add_argument(
+        "--just-vis",
+        action="store_true",
+        help="Just create visualization form saved files without running experiments",
+    )
     args = parser.parse_args()
     return args
 
@@ -268,7 +307,6 @@ def main(
     n_epochs_annotations,
     train_box_file,
     test_box_file,
-    results_file,
 ):
     (
         folders,
@@ -372,14 +410,14 @@ def main(
     # Generated training chips from the drone data predictions
     cropped_ortho_preds_base_annotations_file = create_crops(
         input_annotations_shapefile=ortho_base_preds_whole_region_file,
-        input_image_file=ortho_files["train_drone"],
+        input_image_file=RS_files["train_drone"],
         workdir=workdir,
         annotations_csv=Path(folders["anns"], "ortho_preds_base_anns.csv"),
         crop_folder=folders["ortho_preds_base_crops"],
     )
     cropped_ortho_preds_finetuned_annotations_file = create_crops(
         input_annotations_shapefile=ortho_finetuned_preds_whole_region_file,
-        input_image_file=ortho_files["train_drone"],
+        input_image_file=RS_files["train_drone"],
         workdir=workdir,
         annotations_csv=Path(folders["anns"], "ortho_preds_finetuned_anns.csv"),
         crop_folder=folders["ortho_preds_finetuned_crops"],
@@ -420,32 +458,106 @@ def main(
         ),
         gt_file=test_annotations,
     )
-    results_string = (
-        " name & recall & precision & IoU \n"
-        + f" Base ortho & {base_ortho_eval_dict['box_recall']:.3f} & {base_ortho_eval_dict['box_precision']:.3f} & {base_ortho_eval_dict['box_IoU']:.3f}\\\\ \\hline \n"
-        + f" Finetuned ortho & {finetune_ortho_eval_dict['box_recall']:.3f} & {finetune_ortho_eval_dict['box_precision']:.3f} & {finetune_ortho_eval_dict['box_IoU']:.3f}\\\\ \\hline \n"
-        + f" Base RS & {base_RS_eval_dict['box_recall']:.3f} & {base_RS_eval_dict['box_precision']:.3f} & {base_RS_eval_dict['box_IoU']:.3f}\\\\ \\hline \n"
-        + f" Finetune RS & {finetune_RS_eval_dict['box_recall']:.3f} & {finetune_RS_eval_dict['box_precision']:.3f} & {finetune_RS_eval_dict['box_IoU']:.3f}\\\\ \\hline \n"
-        + f" Finetune RS on ortho base & {fineteuned_RS_on_ortho_base_eval_dict['box_recall']:.3f} & {fineteuned_RS_on_ortho_base_eval_dict['box_precision']:.3f} & {fineteuned_RS_on_ortho_base_eval_dict['box_IoU']:.3f}\\\\ \\hline \n"
-        + f" Finetune RS on ortho finetuned & {fineteuned_RS_on_ortho_finetuned_eval_dict['box_recall']:.3f} & {fineteuned_RS_on_ortho_finetuned_eval_dict['box_precision']:.3f} & {fineteuned_RS_on_ortho_finetuned_eval_dict['box_IoU']:.3f}\\\\ \\hline \n"
+
+    metrics = np.array(
+        [
+            [
+                base_ortho_eval_dict["box_recall"],
+                base_ortho_eval_dict["box_precision"],
+                base_ortho_eval_dict["box_IoU"],
+            ],
+            [
+                finetune_ortho_eval_dict["box_recall"],
+                finetune_ortho_eval_dict["box_precision"],
+                finetune_ortho_eval_dict["box_IoU"],
+            ],
+            [
+                base_RS_eval_dict["box_recall"],
+                base_RS_eval_dict["box_precision"],
+                base_RS_eval_dict["box_IoU"],
+            ],
+            [
+                finetune_RS_eval_dict["box_recall"],
+                finetune_RS_eval_dict["box_precision"],
+                finetune_RS_eval_dict["box_IoU"],
+            ],
+            [
+                fineteuned_RS_on_ortho_base_eval_dict["box_recall"],
+                fineteuned_RS_on_ortho_base_eval_dict["box_precision"],
+                fineteuned_RS_on_ortho_base_eval_dict["box_IoU"],
+            ],
+            [
+                fineteuned_RS_on_ortho_finetuned_eval_dict["box_recall"],
+                fineteuned_RS_on_ortho_finetuned_eval_dict["box_precision"],
+                fineteuned_RS_on_ortho_finetuned_eval_dict["box_IoU"],
+            ],
+        ]
     )
-    print(results_string)
-    with open(results_file, "w") as res_file:
-        res_file.write(results_string)
+    print(metrics)
+    return metrics
+
+
+def vis_metrics(input_file="data/metrics.npz", output_file="vis/metrics.png"):
+    plt.style.use("seaborn-v0_8-paper")
+    data = dict(np.load(input_file))
+    means = []
+    stds = []
+    keys = data.keys()
+    labels = [x[:5] for x in keys]
+    ticks = [float(x) for x in keys]
+
+    for k, v in data.items():
+        print(v.shape)
+        mean = np.mean(v, axis=2)
+        std = np.std(v, axis=2)
+        means.append(mean)
+        stds.append(std)
+
+    means = np.stack(means, axis=2)
+    stds = np.stack(stds, axis=2)
+
+    plt.xscale("log")
+    plt.xticks(ticks=[], labels=[])
+    plt.xticks(ticks=[], labels=[], minor=True)
+    plt.plot(ticks, means[0, 0, :], "b--", label="Pretrained recall")
+    plt.plot(ticks, means[0, 1, :], "r--", label="Pretrained precision")
+    plt.plot(ticks, means[0, 2, :], "g--", label="Pretrained mIoU")
+    plt.plot(ticks, means[1, 0, :], "b-", label="Finetuned recall")
+    plt.plot(ticks, means[1, 1, :], "r-", label="Finetuned precision")
+    plt.plot(ticks, means[1, 2, :], "g-", label="Finetuned mIoU")
+
+    plt.xlabel("Image resolution (meters/px)", size=14)
+    plt.ylabel("Test set metrics", size=14)
+    plt.yticks(size=14)
+    plt.xticks(ticks=ticks, labels=labels, size=14)
+
+    plt.legend(fontsize=10)
+    plt.tight_layout()
+    plt.savefig(output_file)
+    plt.close()
+    plt.style.use("default")
 
 
 if __name__ == "__main__":
     args = parse_args()
-    # Switch the arguments
-    main(results_file="train.txt", **args.__dict__)
-    main(
-        training_annotations=args.training_annotations,
-        ortho_file=args.ortho_file,
-        remote_sensing_file=args.remote_sensing_file,
-        workdir=args.workdir,
-        GSD=args.GSD,
-        n_epochs_annotations=args.n_epochs_annotations,
-        train_box_file=args.test_box_file,
-        test_box_file=args.train_box_file,
-        results_file="test.txt",
-    )
+    if args.just_vis:
+        vis_metrics(input_file="data/metrics.npz", output_file="vis/metrics.png")
+        vis_metrics(input_file="data/metrics.npz", output_file="vis/metrics.pdf")
+        exit()
+
+    first_dict = copy(args.__dict__)
+    second_dict = copy(args.__dict__)
+    second_dict["test_box_file"] = first_dict["train_box_file"]
+    second_dict["train_box_file"] = first_dict["test_box_file"]
+
+    all_metrics = {}
+    for GSD in np.geomspace(0.01, 1, num=20):
+        first_dict["GSD"] = GSD
+        second_dict["GSD"] = GSD
+        all_metrics[str(GSD)] = np.stack(
+            (main(**first_dict), main(**second_dict)), axis=2
+        )
+        print(all_metrics)
+        np.savez("data/metrics.npz", **all_metrics)
+        vis_metrics(input_file="data/metrics.npz", output_file="vis/metrics.png")
+        vis_metrics(input_file="data/metrics.npz", output_file="vis/metrics.pdf")

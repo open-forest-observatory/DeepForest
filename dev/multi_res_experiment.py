@@ -307,6 +307,7 @@ def main(
     n_epochs_annotations,
     train_box_file,
     test_box_file,
+    just_vis,
 ):
     (
         folders,
@@ -497,7 +498,7 @@ def main(
     return metrics
 
 
-def vis_metrics(input_file="data/metrics.npz", output_file="vis/metrics.png"):
+def vis_metrics(input_file="data/metrics.npz", output_file="vis/metrics.png", shift=2):
     plt.style.use("seaborn-v0_8-paper")
     data = dict(np.load(input_file))
     means = []
@@ -516,20 +517,21 @@ def vis_metrics(input_file="data/metrics.npz", output_file="vis/metrics.png"):
     means = np.stack(means, axis=2)
     stds = np.stack(stds, axis=2)
 
+    plt.xticks(size=14)
     plt.xscale("log")
-    plt.xticks(ticks=[], labels=[])
-    plt.xticks(ticks=[], labels=[], minor=True)
-    plt.plot(ticks, means[0, 0, :], "b--", label="Pretrained recall")
-    plt.plot(ticks, means[0, 1, :], "r--", label="Pretrained precision")
-    plt.plot(ticks, means[0, 2, :], "g--", label="Pretrained mIoU")
-    plt.plot(ticks, means[1, 0, :], "b-", label="Finetuned recall")
-    plt.plot(ticks, means[1, 1, :], "r-", label="Finetuned precision")
-    plt.plot(ticks, means[1, 2, :], "g-", label="Finetuned mIoU")
+    # plt.xticks(ticks=[], labels=[])
+    # plt.xticks(ticks=[], labels=[], minor=True)
+    plt.plot(ticks, means[0+shift, 0, :], "b--", label="Pretrained recall")
+    plt.plot(ticks, means[0+shift, 1, :], "r--", label="Pretrained precision")
+    plt.plot(ticks, means[0+shift, 2, :], "g--", label="Pretrained mIoU")
+    plt.plot(ticks, means[1+shift, 0, :], "b-", label="Finetuned recall")
+    plt.plot(ticks, means[1+shift, 1, :], "r-", label="Finetuned precision")
+    plt.plot(ticks, means[1+shift, 2, :], "g-", label="Finetuned mIoU")
 
-    plt.xlabel("Image resolution (meters/px)", size=14)
+    plt.xlabel("Inference resolution (meters/px, log scale)", size=14)
     plt.ylabel("Test set metrics", size=14)
     plt.yticks(size=14)
-    plt.xticks(ticks=ticks, labels=labels, size=14)
+    # plt.xticks(ticks=ticks, labels=labels, size=14)
 
     plt.legend(fontsize=10)
     plt.tight_layout()
@@ -538,8 +540,7 @@ def vis_metrics(input_file="data/metrics.npz", output_file="vis/metrics.png"):
     plt.style.use("default")
 
 
-if __name__ == "__main__":
-    args = parse_args()
+def run_inference_res_sweep(args):
     if args.just_vis:
         vis_metrics(input_file="data/metrics.npz", output_file="vis/metrics.png")
         vis_metrics(input_file="data/metrics.npz", output_file="vis/metrics.pdf")
@@ -554,10 +555,49 @@ if __name__ == "__main__":
     for GSD in np.geomspace(0.01, 1, num=20):
         first_dict["GSD"] = GSD
         second_dict["GSD"] = GSD
-        all_metrics[str(GSD)] = np.stack(
-            (main(**first_dict), main(**second_dict)), axis=2
-        )
+        results = []
+        for i in range(3):
+            results.extend([main(**first_dict), main(**second_dict)])
+        all_metrics[str(GSD)] = np.stack(results, axis=2)
         print(all_metrics)
         np.savez("data/metrics.npz", **all_metrics)
         vis_metrics(input_file="data/metrics.npz", output_file="vis/metrics.png")
         vis_metrics(input_file="data/metrics.npz", output_file="vis/metrics.pdf")
+
+def simulated_RS_experiments(args, n_repeats=3):
+    downsampled_folder = Path(Path(args.ortho_file).parent, "downsampled") 
+    os.makedirs(downsampled_folder, exist_ok=True)
+    all_metrics = {}
+    for simulated_RS_res in np.geomspace(0.1,1, 20):
+        simulated_RS_file = Path(downsampled_folder, f"downsampled_{simulated_RS_res:03f}_" + Path(args.ortho_file).name)
+        # Choose a place to save downsampled version
+        align_to_reference(
+            reference_file=args.ortho_file,
+            working_file=args.ortho_file,
+            output_file=simulated_RS_file,
+            output_padding=0,
+            output_GSD=simulated_RS_res,
+        )
+
+        # Create dict as copy
+        shared_dict = copy(args.__dict__)
+        # Update input file
+        shared_dict["remote_sensing_file"] = simulated_RS_file
+        shared_dict["workdir"] = str(Path(args.workdir, f"downsampled_{simulated_RS_res:03f}"))
+        first_dict = copy(shared_dict)
+        second_dict = copy(shared_dict)
+        second_dict["test_box_file"] = first_dict["train_box_file"]
+        second_dict["train_box_file"] = first_dict["test_box_file"]
+        results = []
+        for i in range(n_repeats):
+            results.extend([main(**first_dict), main(**second_dict)])
+        all_metrics[str(simulated_RS_res)] = np.stack(results, axis=2)
+
+        np.savez("data/simulated_RS_metrics.npz", **all_metrics)
+        vis_metrics(input_file="data/simulated_RS_metrics.npz", output_file="vis/simulated_RS_metrics.png")
+        vis_metrics(input_file="data/simulated_RS_metrics.npz", output_file="vis/simulated_RS_metrics.pdf")
+
+
+if __name__ == "__main__":
+    args = parse_args()
+    simulated_RS_experiments(args)

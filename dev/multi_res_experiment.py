@@ -498,7 +498,7 @@ def main(
     return metrics
 
 
-def vis_metrics(input_file="data/metrics.npz", output_file="vis/metrics.png", shift=2):
+def vis_metrics(input_file="data/metrics.npz", output_file="vis/metrics.png", shift=2, title=None, xlabel_tag="Inference resolution"):
     plt.style.use("seaborn-v0_8-paper")
     data = dict(np.load(input_file))
     means = []
@@ -521,17 +521,18 @@ def vis_metrics(input_file="data/metrics.npz", output_file="vis/metrics.png", sh
     plt.xscale("log")
     # plt.xticks(ticks=[], labels=[])
     # plt.xticks(ticks=[], labels=[], minor=True)
-    plt.plot(ticks, means[0+shift, 0, :], "b--", label="Pretrained recall")
-    plt.plot(ticks, means[0+shift, 1, :], "r--", label="Pretrained precision")
-    plt.plot(ticks, means[0+shift, 2, :], "g--", label="Pretrained mIoU")
-    plt.plot(ticks, means[1+shift, 0, :], "b-", label="Finetuned recall")
-    plt.plot(ticks, means[1+shift, 1, :], "r-", label="Finetuned precision")
-    plt.plot(ticks, means[1+shift, 2, :], "g-", label="Finetuned mIoU")
+    plt.plot(ticks, means[0+shift, 0, :], c="tab:blue", linestyle="--", label="Pretrained recall")
+    plt.plot(ticks, means[0+shift, 1, :], c="tab:orange", linestyle="--", label="Pretrained precision")
+    plt.plot(ticks, means[0+shift, 2, :], c="tab:green", linestyle="--", label="Pretrained mIoU")
+    plt.plot(ticks, means[1+shift, 0, :], c="tab:blue", linestyle="-", label="Finetuned recall")
+    plt.plot(ticks, means[1+shift, 1, :], c="tab:orange", linestyle="-", label="Finetuned precision")
+    plt.plot(ticks, means[1+shift, 2, :], c="tab:green", linestyle="-", label="Finetuned mIoU")
 
-    plt.xlabel("Inference resolution (meters/px, log scale)", size=14)
+    plt.xlabel(f"{xlabel_tag} (meters/px, log scale)", size=14)
     plt.ylabel("Test set metrics", size=14)
     plt.yticks(size=14)
-    # plt.xticks(ticks=ticks, labels=labels, size=14)
+    if title is not None:
+        plt.title(title, size=14)
 
     plt.legend(fontsize=10)
     plt.tight_layout()
@@ -539,12 +540,24 @@ def vis_metrics(input_file="data/metrics.npz", output_file="vis/metrics.png", sh
     plt.close()
     plt.style.use("default")
 
+def run_inference(args, n_repeats=3, GSD=None):
+    first_dict = copy(args.__dict__)
+    second_dict = copy(args.__dict__)
+    # Swap train and test
+    second_dict["test_box_file"] = first_dict["train_box_file"]
+    second_dict["train_box_file"] = first_dict["test_box_file"]
+
+    if GSD is not None:
+        first_dict["GSD"] = GSD
+        second_dict["GSD"] = GSD
+
+    results = []
+    for i in range(n_repeats):
+        results.extend([main(**first_dict), main(**second_dict)])
+    results = np.stack(results, axis=2)
+    return results
 
 def run_inference_res_sweep(args):
-    if args.just_vis:
-        vis_metrics(input_file="data/metrics.npz", output_file="vis/metrics.png")
-        vis_metrics(input_file="data/metrics.npz", output_file="vis/metrics.pdf")
-        exit()
 
     first_dict = copy(args.__dict__)
     second_dict = copy(args.__dict__)
@@ -592,12 +605,23 @@ def simulated_RS_experiments(args, n_repeats=3):
         for i in range(n_repeats):
             results.extend([main(**first_dict), main(**second_dict)])
         all_metrics[str(simulated_RS_res)] = np.stack(results, axis=2)
-
-        np.savez("data/simulated_RS_metrics.npz", **all_metrics)
-        vis_metrics(input_file="data/simulated_RS_metrics.npz", output_file="vis/simulated_RS_metrics.png")
-        vis_metrics(input_file="data/simulated_RS_metrics.npz", output_file="vis/simulated_RS_metrics.pdf")
+        npz_file = "data/simulated_RS_metrics.npz"
+        np.savez(npz_file, **all_metrics)
+        vis_metrics(input_file=npz_file, output_file="vis/simulated_RS_metrics.png", shift=2)
+        vis_metrics(input_file=npz_file, output_file="vis/simulated_RS_metrics.pdf", shift=2)
+        vis_metrics(input_file=npz_file, output_file="vis/simulated_RS_metrics_trained_on_drone_preds.png", shift=4)
+        vis_metrics(input_file=npz_file, output_file="vis/simulated_RS_metrics_trained_on_drone_preds.pdf", shift=4)
 
 
 if __name__ == "__main__":
     args = parse_args()
+    if args.just_vis:
+        vis_metrics(input_file="data/metrics.npz", output_file="vis/drone_metrics.png", shift=0,title="Orthomosaic performance vs. inference resolution", xlabel_tag="Inference resolution")
+        vis_metrics(input_file="data/metrics.npz", output_file="vis/drone_metrics.pdf", shift=0,title="Orthomosaic performance vs. inference resolution", xlabel_tag="Inference resolution")
+        vis_metrics(input_file="data/metrics.npz", output_file="vis/NAIP_metrics.png", shift=2,title="NAIP performance vs. inference resolution", xlabel_tag="Inference resolution")
+        vis_metrics(input_file="data/metrics.npz", output_file="vis/NAIP_metrics.pdf", shift=2,title="NAIP performance vs. inference resolution", xlabel_tag="Inferene resolution")
+        vis_metrics(input_file="data/simulated_RS_metrics.npz", output_file="vis/simulated_RS_metrics.pdf", shift=2, title="Performance vs. simulated resolution", xlabel_tag="Data resolution")
+        exit()
+    run_inference(args)
+    run_inference_res_sweep(args)
     simulated_RS_experiments(args)
